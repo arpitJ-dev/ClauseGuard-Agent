@@ -1,0 +1,57 @@
+# Virtual Environment
+venv/
+legal-lm/
+env/
+.env
+.env.*
+!.env.example
+
+# Local assistant/editor state
+.agents/
+.codex/
+
+# Vectorstore
+qdrant_storage
+.legal_lm/
+analysis_outputs/
+test_outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+coverage.xml
+htmlcov/
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store 
+
+# Large/generated local artifacts
+*.zip
+process.ipynb
+/[0-9]*
+
+# Specific files to ignore
+/agents/utils/roberta_classifier.py
