@@ -1,0 +1,7 @@
+*.html linguist-generated
+reports/** linguist-generated
+outputs/** linguist-generated
+analysis_outputs/** linguist-generated
+sample_outputs/** linguist-generated
+docs/** linguist-documentation
+*.md linguist-documentation
