@@ -1,0 +1,416 @@
+openapi: 3.1.0
+info:
+  title: ClauseGuard Agent Control Plane
+  version: 1.0.0
+  description: Job-oriented API for contract analysis and document comparison.
+  license:
+    name: MIT License
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:8080
+security: []
+tags:
+  - name: Analysis
+    description: Submit standalone analysis and version-comparison jobs.
+  - name: Jobs
+    description: Inspect, stream, cancel, delete, and retrieve job results.
+  - name: System
+    description: Inspect control-plane dependency readiness.
+paths:
+  /api/v1/analyses:
+    post:
+      tags: [Analysis]
+      summary: Submit a contract for analysis
+      operationId: submitAnalysis
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+      responses:
+        "202":
+          description: Analysis accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/UploadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/QueueFull"
+        "503":
+          $ref: "#/components/responses/ShuttingDown"
+  /api/v1/comparisons:
+    post:
+      tags: [Analysis]
+      summary: Submit an original and modified document for comparison
+      operationId: submitComparison
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [original, modified]
+              properties:
+                original:
+                  type: string
+                  format: binary
+                modified:
+                  type: string
+                  format: binary
+      responses:
+        "202":
+          description: Comparison accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          $ref: "#/components/responses/UploadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "429":
+          $ref: "#/components/responses/QueueFull"
+        "503":
+          $ref: "#/components/responses/ShuttingDown"
+  /api/v1/jobs:
+    get:
+      tags: [Jobs]
+      summary: List recent jobs
+      operationId: listJobs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Recent jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [jobs]
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Job"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/jobs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/JobID"
+    get:
+      tags: [Jobs]
+      summary: Get the latest job state
+      operationId: getJob
+      responses:
+        "200":
+          description: Job state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Jobs]
+      summary: Cancel an active job or delete a terminal job
+      operationId: deleteJob
+      responses:
+        "200":
+          description: Terminal job deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "202":
+          description: Active job cancellation requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/jobs/{id}/events:
+    parameters:
+      - $ref: "#/components/parameters/JobID"
+    get:
+      tags: [Jobs]
+      summary: Stream current and future job snapshots
+      operationId: streamJob
+      responses:
+        "200":
+          description: Server-sent events named `job`; each data field is a Job JSON object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/jobs/{id}/report:
+    parameters:
+      - $ref: "#/components/parameters/JobID"
+    get:
+      tags: [Jobs]
+      summary: Download a completed JSON report
+      operationId: getReport
+      responses:
+        "200":
+          description: Versioned analysis or comparison report
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "./schemas/analysis-report-v1.schema.json"
+                  - $ref: "./schemas/comparison-report-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: Check the job store and Python engine bridge
+      operationId: getHealth
+      responses:
+        "200":
+          description: Dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          description: A required dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+components:
+  parameters:
+    JobID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-f0-9]{32}$"
+  schemas:
+    InputFile:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    JobError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    Job:
+      type: object
+      required: [id, type, status, stage, progress, message, inputs, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [analysis, comparison]
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled, timed_out]
+        stage:
+          type: string
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/InputFile"
+        report_url:
+          type: string
+        error:
+          $ref: "#/components/schemas/JobError"
+        exit_code:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    JobResponse:
+      type: object
+      required: [job]
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+    SubmissionResponse:
+      allOf:
+        - $ref: "#/components/schemas/JobResponse"
+        - type: object
+          required: [links]
+          properties:
+            links:
+              type: object
+              required: [self, events]
+              properties:
+                self:
+                  type: string
+                events:
+                  type: string
+    DeleteResponse:
+      allOf:
+        - $ref: "#/components/schemas/JobResponse"
+        - type: object
+          required: [deleted]
+          properties:
+            deleted:
+              type: boolean
+    EngineHealth:
+      type: object
+      required: [ready]
+      properties:
+        ready:
+          type: boolean
+        models:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        error:
+          type: string
+    HealthResponse:
+      type: object
+      required: [status, engine]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        engine:
+          $ref: "#/components/schemas/EngineHealth"
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/Error"
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Job or report not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The current job state does not allow the operation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Browser origin is not the same origin or explicitly allowed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UploadTooLarge:
+      description: Multipart request exceeds the configured limit
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    QueueFull:
+      description: Active job capacity has been reached; Retry-After is provided
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ShuttingDown:
+      description: The server is draining and is not accepting new jobs
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnsupportedMediaType:
+      description: Upload is not multipart or uses an unsupported file type
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
