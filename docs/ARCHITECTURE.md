@@ -1,79 +1,136 @@
-# Architecture
+# System Architecture
 
-ClauseGuard Agent is a command-line, agentic contract analysis prototype. It uses Groq-hosted language models for generation, local deterministic retrieval, and transparent scoring.
+ClauseGuard Agent is a modular contract-review pipeline. It separates document
+parsing, extraction, retrieval, rule evaluation, model reasoning, verification,
+decision scoring, rewriting, and reporting so each stage can be tested and
+audited independently.
 
-## Pipeline
+## Runtime Flow
 
-```text
-Document Input
-  -> Preprocessor Agent
-  -> Context Bank
-  -> Knowledge Agent / Local RAG
-  -> Compliance Checker
-  -> Groq Verifier
-  -> Weighted Scoring
-  -> Clause Rewriter
-  -> Postprocessor
-  -> Benchmark Evaluator
+```mermaid
+flowchart LR
+    A["Contract input"] --> B["DocumentLoader"]
+    B --> C["PreprocessorAgent"]
+    C --> D["ContextBank"]
+    D --> E["KnowledgeAgent"]
+    D --> F["ComplianceCheckerAgent"]
+    E --> F
+    F --> G["Issue-specific evidence retrieval"]
+    G --> H["VerifierAgent"]
+    H --> I["WeightedScorer"]
+    I --> J["ClauseRewriterAgent"]
+    J --> K["Postprocessor"]
+    K --> L["Markdown and JSON"]
 ```
 
-## Components
+The pipeline operates on one document at a time. Every clause, evidence item,
+candidate, score, and rewrite carries a stable identifier so findings can be
+traced back to source text.
 
-- **Document Loader:** reads `.txt`, `.docx`, and `.pdf` files while preserving clause order as much as possible.
-- **Preprocessor Agent:** classifies the contract, extracts clauses, identifies basic entities, and tags risk terms.
-- **Context Bank:** stores a normalized single-document analysis state for all agents.
-- **Knowledge Agent:** uses a local vector store over built-in legal checklist references. Qdrant Cloud and paid web search are not used in the v1 default path.
-- **Compliance Checker:** creates candidate findings for missing clauses, risky language, broad indemnity, vague payment terms, assignment risk, termination risk, internal contradictions, structural flaws, and terminology drift.
-- **Verifier Agent:** sends candidate findings to Groq for independent review.
-- **Weighted Scoring:** combines deterministic rules, local evidence, primary model reasoning, verifier agreement, and clause structure into one final confidence score.
-- **Clause Rewriter:** drafts safer clause alternatives for accepted clause-level findings.
-- **Postprocessor:** writes JSON and Markdown reports.
-- **Benchmark Evaluator:** runs labeled benchmark cases, compares accepted issue types against expected labels, and reports precision, recall, F1, and usage snapshots.
+## Component Boundaries
+
+| Component | Module | Contract |
+|---|---|---|
+| Document loader | `clauseguard.document` | Converts TXT, DOCX, or PDF input into normalized text and metadata |
+| Preprocessor | `clauseguard.agents.preprocessor` | Produces document type, ordered clauses, entities, categories, and risk terms |
+| Shared state | `clauseguard.context` | Owns the normalized single-document state used by all stages |
+| Retrieval | `clauseguard.rag` | Ranks versioned review checklists for clauses and candidate issues |
+| Compliance checks | `clauseguard.agents.compliance` | Emits structured candidates with rule IDs, signals, and deterministic confidence |
+| Verification | `clauseguard.agents.verifier` | Requests a separate model assessment and records explicit verifier status |
+| Decision scoring | `clauseguard.scoring` | Combines five bounded evidence channels and applies issue-specific thresholds |
+| Rewriting | `clauseguard.agents.rewriter` | Drafts safer language for accepted clause-level findings |
+| Reporting | `clauseguard.postprocessor` | Writes a human-readable report and the complete machine-readable audit record |
+
+Pydantic models in `clauseguard.schemas` validate all cross-stage data. A model
+response cannot become a finding until it has been parsed into these schemas and
+passed through the decision layer.
+
+## Retrieval Design
+
+The local retriever combines token overlap with deterministic feature-hashed
+token and bigram vectors. It is intentionally lightweight and reproducible:
+
+```text
+relevance = 0.65 * lexical overlap + 0.35 * vector cosine similarity
+```
+
+Clause-level retrieval provides category context. A second retrieval pass uses
+the candidate issue, explanation, signals, and affected clause metadata to attach
+issue-specific evidence before verification and scoring. The built-in corpus is
+a review checklist, not a statutory database; it can be replaced or extended
+without changing the agent contracts.
 
 ## Model Roles
 
-| Role | Provider | Default Model | Purpose |
-|---|---|---|---|
-| Extraction | Groq | `llama-3.1-8b-instant` | Clause extraction and JSON normalization |
-| Embedding | Local | `local-hash-lexical` | Deterministic local RAG retrieval |
-| Reasoning | Groq | `llama-3.3-70b-versatile` | Compliance reasoning and rewrites |
-| Verifier | Groq | `openai/gpt-oss-120b` | Independent verifier |
+| Role | Default model | Reason for separation |
+|---|---|---|
+| Extraction | `openai/gpt-oss-20b` | Structured document classification and clause extraction |
+| Reasoning and rewriting | `qwen/qwen3.6-27b` | Contextual issue review, explanations, and revised language |
+| Verification | `openai/gpt-oss-120b` | Separate model family reviews candidate support |
+| Retrieval | `local-hash-lexical` | Deterministic local evidence ranking |
 
-## Scoring
+All hosted calls pass through `ModelRouter`. The router centralizes model-role
+mapping, JSON parsing, HTTP timeouts, provider error handling, and per-run usage
+guards. Unknown roles and malformed responses fail explicitly.
+
+## Decision Layer
+
+ClauseGuard uses application-level evidence weighting, not trained model weights:
 
 ```text
-deterministic legal/rule checks       30%
-retrieved evidence/RAG match          25%
-primary model reasoning               20%
-verifier agreement                    15%
-clause structure/consistency          10%
+decision score =
+    0.30 * deterministic rule confidence
+  + 0.25 * retrieved evidence relevance
+  + 0.20 * primary reasoning confidence
+  + 0.15 * verifier agreement
+  + 0.10 * clause structure confidence
 ```
 
-This is evidence-weighted decision scoring, not model fine-tuning. The project does not train or modify model weights.
+Each component is constrained to `[0, 1]`. General acceptance starts at `0.55`;
+broad issue families use higher calibrated thresholds. The JSON result preserves
+the component values, weights, threshold, rule ID, signals, verifier status, and
+acceptance decision.
 
-## Safety Boundaries
+A verifier result has one of three states:
 
-- `FREE_TIER_ONLY=true` blocks non-approved model configuration.
-- Per-run request and estimated input-token caps stop runaway quota use. Match caps to the account limits shown in the Groq console.
-- Benchmark evaluation defaults to mock/local mode. Real Groq evaluation is explicit and capped to one case by default.
-- `.env` is ignored and `.env.example` contains placeholders only.
-- The v1 system is not legal advice and should not be used as a production legal product.
+- `verified`: a structured second-model result was received.
+- `not_run`: deterministic evaluation mode used a neutral verifier component.
+- `unavailable`: a hosted verifier returned no usable structured result.
 
-## Evaluation
+This prevents a fallback from being presented as completed independent review.
 
-The project includes a small seed benchmark and a repo-dataset benchmark built from the included original/modified perturbation files:
+## Analysis Modes
 
-```bash
-python -m legal_lm evaluate benchmarks\seed_contracts.jsonl --mock-models
-python -m legal_lm build-dataset-benchmark
-python -m legal_lm evaluate benchmarks\repo_dataset_benchmark.jsonl --mock-models
-```
+**Standalone analysis** processes one contract and produces findings and
+rewrites. This is the primary product workflow.
 
-Current local results:
+**Document comparison** matches clauses from an original and modified agreement
+and reports additions, removals, and changed safeguards. It is an inspection
+workflow and is not used to generate standalone benchmark predictions. Before
+matching, it canonicalizes whitespace and numbered-heading boundaries so PDF
+line wrapping does not create artificial clause changes.
 
-| Benchmark | Cases | Precision | Recall | F1 | API Calls |
-|---|---:|---:|---:|---:|---:|
-| Seed benchmark | 3 | `1.0000` | `1.0000` | `1.0000` | 0 |
-| Repo perturbation dataset | 11 | `0.6154` | `0.8000` | `0.6957` | 0 |
+**Benchmark evaluation** supplies only each labeled contract to the standalone
+pipeline. Original documents and perturbation metadata remain provenance. The
+evaluator calculates case-level issue classification metrics and writes per-case,
+per-issue, and aggregate error analysis.
 
-The repo dataset contains 31 perturbation records mapped into the current issue taxonomy. These metrics should be treated as benchmark progress indicators, not broad legal accuracy.
+## Failure Semantics
+
+- Missing, empty, unsupported, encrypted, or corrupted documents raise a
+  `DocumentLoadError` with a user-facing message.
+- Exact long-page duplicates from malformed PDF text layers are collapsed before
+  clause extraction, while ordinary repeated short pages remain intact.
+- Invalid configuration fails before the first hosted request.
+- Per-run request and input-size guards fail before exceeding configured caps.
+- Transport failures, rate limits, non-JSON HTTP responses, and malformed model
+  payloads are represented by explicit model exceptions.
+- Markdown is a concise review surface; JSON remains the complete audit record,
+  including rejected candidates.
+
+## Verification Strategy
+
+The automated quality gate runs formatting, import ordering, linting, static type
+checking, unit/integration tests, branch-aware coverage, CLI smoke tests, and both
+deterministic benchmark suites. Provider smoke tests are isolated from CI so the
+main validation path remains reproducible.

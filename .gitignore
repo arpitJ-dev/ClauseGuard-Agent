@@ -1,6 +1,6 @@
 # Virtual Environment
 venv/
-legal-lm/
+.venv/
 env/
 .env
 .env.*
@@ -12,7 +12,7 @@ env/
 
 # Vectorstore
 qdrant_storage
-.legal_lm/
+.clauseguard/
 analysis_outputs/
 test_outputs/
 
@@ -52,6 +52,3 @@ wheels/
 *.zip
 process.ipynb
 /[0-9]*
-
-# Specific files to ignore
-/agents/utils/roberta_classifier.py

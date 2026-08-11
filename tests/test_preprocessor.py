@@ -1,7 +1,7 @@
-from legal_lm.config import AppConfig
-from legal_lm.model_router import ModelRouter
-from legal_lm.agents.preprocessor import PreprocessorAgent
-from legal_lm.schemas import Clause, LoadedDocument
+from clauseguard.agents.preprocessor import PreprocessorAgent
+from clauseguard.config import AppConfig
+from clauseguard.model_router import ModelRouter
+from clauseguard.schemas import Clause, LoadedDocument
 
 
 def test_preprocessor_extracts_clauses_and_entities():
@@ -48,4 +48,7 @@ def test_preprocessor_detects_laws_of_as_governing_law():
     router = ModelRouter(AppConfig(groq_api_key=None, mock_models=True))
     agent = PreprocessorAgent(router)
 
-    assert agent._categorize("This agreement is governed by the laws of Pennsylvania.") == "Governing Law"
+    assert (
+        agent._categorize("This agreement is governed by the laws of Pennsylvania.")
+        == "Governing Law"
+    )

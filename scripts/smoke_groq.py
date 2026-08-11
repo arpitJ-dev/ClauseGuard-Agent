@@ -1,14 +1,9 @@
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from legal_lm.config import AppConfig
-from legal_lm.model_router import ModelRouter
+from clauseguard.config import AppConfig
+from clauseguard.model_router import ModelRouter
 
 
 def main() -> int:

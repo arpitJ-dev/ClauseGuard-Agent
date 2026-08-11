@@ -1,7 +1,7 @@
 import pytest
 
-from legal_lm.config import AppConfig
-from legal_lm.model_router import UsageLimitError, UsageLimiter
+from clauseguard.config import AppConfig
+from clauseguard.model_router import UsageLimiter, UsageLimitError
 
 
 def test_usage_limiter_blocks_request_over_cap():

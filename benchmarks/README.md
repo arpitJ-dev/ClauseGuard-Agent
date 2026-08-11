@@ -1,17 +1,46 @@
-# Benchmark Fixtures
+# Evaluation Benchmarks
 
-This directory contains the first local benchmark set for Legal-LLM evaluation.
+ClauseGuard includes two versioned, reproducible issue-classification suites.
 
-The JSONL file labels expected issue types for small contract excerpts. Running the benchmark in mock/local mode does not call Groq:
+| Manifest | Purpose | Cases |
+|---|---|---:|
+| `seed_contracts.jsonl` | Focused positive and negative regression fixtures | 3 |
+| `repo_dataset_benchmark.jsonl` | Contract perturbations derived from the bundled dataset | 11 |
+
+## Case Schema
+
+Each JSONL record defines:
+
+- a stable case ID;
+- the contract supplied to the standalone analysis pipeline;
+- expected issue types;
+- optional explicitly absent issue types;
+- provenance linking the source contract and perturbation metadata;
+- structured perturbation summaries for error analysis.
+
+## Methodology
+
+Evaluation occurs at the case-level issue-type boundary. A predicted issue type is
+counted once per document, even if multiple clauses produce that issue. Aggregate
+precision, recall, and F1 are computed from the summed true-positive,
+false-positive, and false-negative counts.
+
+The perturbation suite uses only modified contracts as prediction input. Original
+contracts and change metadata are retained for label provenance and the separate
+comparison workflow. This prevents paired-document text from leaking into the
+standalone detector.
+
+Issue types outside a manifest's mapped taxonomy are retained in the report for
+manual analysis and are not mixed into that benchmark's classification matrix.
+Per-case and per-issue tables make this scope visible.
+
+## Reproduce
 
 ```bash
-python -m legal_lm evaluate benchmarks\seed_contracts.jsonl --mock-models
+clauseguard evaluate benchmarks/seed_contracts.jsonl --mock-models
+clauseguard build-dataset-benchmark
+clauseguard evaluate benchmarks/repo_dataset_benchmark.jsonl --mock-models
 ```
 
-Real-model evaluation is intentionally opt-in and capped to one case by default:
-
-```bash
-python -m legal_lm evaluate benchmarks\seed_contracts.jsonl --real-models --max-cases 1
-```
-
-These fixtures measure issue-type detection for the current rule and agent workflow. They are not a substitute for a larger CLAUSE, CUAD, or ContractNLI-style evaluation set.
+Results include Markdown and JSON summaries plus the full analysis report for
+every case. See `data/README.md` for dataset layout, provenance, and usage notes.

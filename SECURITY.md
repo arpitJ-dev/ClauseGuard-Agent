@@ -1,24 +1,49 @@
-# Security
+# Security Policy
 
-## API Keys
+## Reporting a Vulnerability
 
-Never commit API keys or provider tokens. The project reads credentials from `.env`, and `.env` is ignored by default.
+Use a private GitHub Security Advisory for suspected credential exposure,
+dependency vulnerabilities, unsafe document handling, or prompt-injection paths.
+Do not disclose exploitable details in a public issue before a fix is available.
 
-Before publishing this repository, rotate any key that was ever stored locally during development, including:
+## Credential Handling
 
-- Groq API keys
-- Qdrant API keys
-- Tavily API keys
-- Any OpenAI or other LLM provider keys
+- Credentials are loaded from the process environment or an ignored `.env` file.
+- `.env.example` contains placeholders only.
+- Logs and reports must never include authorization headers or credential values.
+- Rotate a credential immediately if it is committed, pasted into an issue, or
+  exposed in terminal output.
 
-## Legal Documents
+The publish-readiness script scans maintained text files for common provider-key
+formats. This is a guardrail, not a replacement for repository secret scanning.
 
-Do not submit confidential, privileged, or private legal documents to external cloud models. Use public contracts, synthetic examples, or approved benchmark data.
+## Contract Data
 
-## Cost Controls
+Hosted analysis sends relevant contract text to the configured model provider.
+Do not process privileged, confidential, personal, export-controlled, or otherwise
+restricted material unless the provider, account configuration, and organizational
+policy explicitly permit it.
 
-The project defaults to `FREE_TIER_ONLY=true` and enforces per-run request and estimated input-token caps. Match local caps to your Groq console limits before running real model-backed demos, and do not disable these controls for portfolio demos.
+The deterministic test and benchmark workflows operate on bundled public or
+synthetic fixtures. Generated reports are ignored by default because they may
+contain source contract language.
 
-## Reporting Issues
+## Untrusted Input
 
-For a private portfolio repository, track security issues privately until credentials and sensitive data have been reviewed.
+Contracts are treated as untrusted data rather than instructions. Model prompts
+separate system policy from serialized document content, and model output is
+validated before entering application state. Consumers should still review output
+for prompt injection, fabricated authority, and adversarial formatting.
+
+## Output Integrity
+
+ClauseGuard is a review aid, not an authorization or enforcement system. Do not
+automatically execute contractual decisions from a finding or rewrite. Preserve
+the source document, JSON audit record, model configuration, and human approval
+when findings influence a legal workflow.
+
+## Dependency Hygiene
+
+CI installs dependencies from `pyproject.toml`, runs static analysis and tests,
+and exercises parsers with malformed inputs. Review dependency updates before
+merging, especially document parsers and network clients.

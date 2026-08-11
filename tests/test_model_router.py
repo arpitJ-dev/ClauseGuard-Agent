@@ -1,7 +1,7 @@
 import pytest
 
-from legal_lm.config import AppConfig
-from legal_lm.model_router import ModelResponseError, ModelRouter
+from clauseguard.config import AppConfig
+from clauseguard.model_router import ModelResponseError, ModelRouter
 
 
 def test_generate_json_raises_clear_error_for_malformed_model_output(monkeypatch):
@@ -11,3 +11,44 @@ def test_generate_json_raises_clear_error_for_malformed_model_output(monkeypatch
 
     with pytest.raises(ModelResponseError, match="non-JSON output"):
         router.generate_json("reasoning", "Return JSON.", "Test prompt.")
+
+
+def test_unknown_model_role_is_rejected():
+    router = ModelRouter(AppConfig(groq_api_key="groq-key", mock_models=False))
+
+    with pytest.raises(ValueError, match="Unknown model role"):
+        router.generate_text("unknown-role", "system", "prompt")
+
+
+def test_local_embedding_is_deterministic_and_lexically_meaningful():
+    router = ModelRouter(AppConfig(groq_api_key=None, mock_models=True))
+    contract = "termination requires thirty days written notice and a cure period"
+    related = "written termination notice must provide a thirty day cure period"
+    unrelated = "invoice taxes are payable by electronic bank transfer"
+
+    contract_vector, repeated, related_vector, unrelated_vector = router.embed_texts(
+        [contract, contract, related, unrelated]
+    )
+
+    assert contract_vector == repeated
+    related_similarity = sum(a * b for a, b in zip(contract_vector, related_vector))
+    unrelated_similarity = sum(a * b for a, b in zip(contract_vector, unrelated_vector))
+    assert related_similarity > unrelated_similarity
+
+
+class _FakeResponse:
+    status_code = 200
+    text = "not-json"
+
+    def json(self):
+        raise ValueError("invalid JSON")
+
+
+def test_groq_non_json_http_response_has_clear_error(monkeypatch):
+    router = ModelRouter(AppConfig(groq_api_key="groq-key", mock_models=False))
+    monkeypatch.setattr(
+        "clauseguard.model_router.requests.post", lambda *args, **kwargs: _FakeResponse()
+    )
+
+    with pytest.raises(ModelResponseError, match="non-JSON HTTP response"):
+        router.generate_text("reasoning", "system", "prompt")

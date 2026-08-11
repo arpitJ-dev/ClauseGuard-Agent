@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from legal_lm.pipeline import LegalAnalysisPipeline
+from clauseguard.pipeline import ClauseGuardPipeline
 
 
 def test_pipeline_runs_end_to_end_with_mock_models(tmp_path: Path):
@@ -19,7 +19,7 @@ def test_pipeline_runs_end_to_end_with_mock_models(tmp_path: Path):
     )
 
     output_dir = tmp_path / "outputs"
-    pipeline = LegalAnalysisPipeline.from_env(mock_models=True)
+    pipeline = ClauseGuardPipeline.from_env(mock_models=True)
     report = pipeline.analyze(document_path, output_dir=output_dir)
 
     assert report.document_type == "Service Agreement"

@@ -6,7 +6,7 @@ This inventory is generated from the repo's local contract perturbation dataset.
 
 | Metric | Value |
 |---|---:|
-| Original text files | 12 |
+| Original text files | 11 |
 | Modified files | 12 |
 | Perturbation JSON files | 11 |
 | Perturbation records | 31 |
@@ -30,18 +30,20 @@ Benchmark manifest: `benchmarks/repo_dataset_benchmark.jsonl`
 | Structural Flaws - In Text Contradiction | 3 |
 | Structural Flaws - Legal Contradiction | 3 |
 
-## Expected Issue Labels
+## Perturbation-Level Label Mappings
 
-| Issue Type | Count |
+| Issue Type | Mapped perturbations |
 |---|---:|
 | internal_contradiction | 28 |
 | misaligned_terminology | 6 |
 | missing_required_language | 7 |
 | risky_language | 7 |
-| structural_flaw | 6 |
+| structural_flaw | 3 |
 
 ## Notes
 
-- Labels are mapped from perturbation metadata into the current ClauseGuard Agent issue taxonomy.
-- Metrics from this dataset measure the current system against these mapped labels; they are not broad legal accuracy.
-- The benchmark can be run locally without API quota using `python -m legal_lm evaluate benchmarks\repo_dataset_benchmark.jsonl --mock-models`.
+- Labels are mapped from perturbation metadata into the current ClauseGuard issue taxonomy.
+- Mapping counts above are perturbation-level; benchmark metrics deduplicate labels at the case level.
+- Evaluation uses case-level issue labels mapped from the perturbation metadata.
+- Only modified contracts are passed to the detection pipeline; original documents remain provenance for the labels.
+- The manifest retains source paths and changed-text previews for reproducible error analysis.

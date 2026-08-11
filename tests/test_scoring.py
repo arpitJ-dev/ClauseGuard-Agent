@@ -1,4 +1,4 @@
-from legal_lm.scoring import WEIGHTS, WeightedScorer
+from clauseguard.scoring import WEIGHTS, WeightedScorer
 
 
 def test_weighted_scoring_uses_expected_weights():

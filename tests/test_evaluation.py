@@ -2,12 +2,21 @@ from pathlib import Path
 
 import pytest
 
-from legal_lm.evaluation import BenchmarkCase, EvaluationError, classification_metrics, evaluate_report, load_benchmark, run_benchmark
-from legal_lm.schemas import AnalysisReport, ComponentScores, Finding
+from clauseguard.evaluation import (
+    BenchmarkCase,
+    EvaluationError,
+    classification_metrics,
+    evaluate_report,
+    load_benchmark,
+    run_benchmark,
+)
+from clauseguard.schemas import AnalysisReport, ComponentScores, Finding
 
 
 def test_classification_metrics_counts_tp_fp_fn():
-    metrics = classification_metrics({"missing_governing_law", "uncapped_indemnity"}, {"missing_governing_law", "risky_language"})
+    metrics = classification_metrics(
+        {"missing_governing_law", "uncapped_indemnity"}, {"missing_governing_law", "risky_language"}
+    )
 
     assert metrics["true_positive"] == 1
     assert metrics["false_positive"] == 1
@@ -76,7 +85,9 @@ def test_evaluate_report_separates_out_of_scope_predictions(tmp_path: Path):
 
 def test_load_benchmark_resolves_relative_documents(tmp_path: Path):
     document = tmp_path / "contract.txt"
-    document.write_text("SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8")
+    document.write_text(
+        "SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8"
+    )
     benchmark = tmp_path / "benchmark.jsonl"
     benchmark.write_text(
         '{"id":"case-1","document":"contract.txt","expected_issue_types":["missing_governing_law"]}\n',
@@ -90,7 +101,9 @@ def test_load_benchmark_resolves_relative_documents(tmp_path: Path):
     assert cases[0].expected_issue_types == {"missing_governing_law"}
 
 
-def test_run_benchmark_mock_mode_does_not_require_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_run_benchmark_mock_mode_does_not_require_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     document = tmp_path / "contract.txt"
     document.write_text(
@@ -123,8 +136,12 @@ def test_run_benchmark_mock_mode_does_not_require_api_key(tmp_path: Path, monkey
 def test_real_benchmark_multiple_cases_requires_explicit_override(tmp_path: Path):
     document_one = tmp_path / "one.txt"
     document_two = tmp_path / "two.txt"
-    document_one.write_text("SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8")
-    document_two.write_text("SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8")
+    document_one.write_text(
+        "SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8"
+    )
+    document_two.write_text(
+        "SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.", encoding="utf-8"
+    )
     benchmark = tmp_path / "benchmark.jsonl"
     benchmark.write_text(
         "\n".join(

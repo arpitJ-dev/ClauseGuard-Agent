@@ -1,346 +1,309 @@
 # ClauseGuard Agent
 
-AI-assisted contract analysis system for reviewing legal documents, detecting clause-level risks, scoring evidence, verifying findings, and generating structured Markdown and JSON reports.
+![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-54%20passing-2EA44F)
+![Coverage](https://img.shields.io/badge/coverage-83%25-2EA44F)
+![Benchmark F1](https://img.shields.io/badge/repo%20benchmark-F1%200.9730-2EA44F)
+![License](https://img.shields.io/badge/license-MIT-yellow)
 
-ClauseGuard Agent is inspired by the SAUL concept: Smart Agents for Understanding Law. Instead of treating contract review as one large prompt, the system breaks the workflow into specialized stages for document loading, preprocessing, retrieval, compliance analysis, verifier review, clause rewriting, and final reporting.
+**Agentic contract risk analysis with evidence retrieval, separate-model verification, transparent scoring, and clause rewrites.**
 
-> This project is a legal analysis assistant for research and portfolio demonstration. It is not legal advice.
+ClauseGuard Agent turns `.txt`, `.docx`, and `.pdf` contracts into structured, auditable review reports. Instead of asking one language model to review an entire agreement in a single prompt, it coordinates specialized agents and combines deterministic contract-review rules, local retrieval, model reasoning, verifier agreement, and document-structure signals.
 
-## Project Goal
+The project originated from the SAUL idea, "Smart Agents for Understanding Law," and develops that concept into a testable software system rather than a single-prompt LLM wrapper.
 
-Legal review is usually a multi-step process:
+The result is a review workflow that identifies risky or missing language, cites supporting evidence, explains its confidence, and proposes safer wording while aiming to preserve the original business intent.
 
-* Read and structure the document
-* Identify important clauses and entities
-* Compare obligations against legal or policy references
-* Detect risky wording, missing provisions, and inconsistencies
-* Verify candidate findings before accepting them
-* Suggest safer clause rewrites
-* Generate a report that a human reviewer can inspect
+> ClauseGuard supports legal review; it does not provide legal advice or replace a qualified attorney.
 
-ClauseGuard Agent turns that process into a reproducible software pipeline with transparent scoring and validation.
+## Results at a Glance
 
-## Why This Is Not Just an LLM Wrapper
+| Capability | Verified result |
+|---|---:|
+| Supported document formats | `.txt`, `.docx`, `.pdf` |
+| Specialized pipeline agents | 6 |
+| Automated tests | 54 passing |
+| Statement and branch coverage | 83% |
+| Repo benchmark cases | 11 |
+| Expected benchmark labels | 19 |
+| Repo benchmark precision | `1.0000` |
+| Repo benchmark recall | `0.9474` |
+| Repo benchmark F1 | `0.9730` |
 
-This project does not simply send a contract to an LLM and return a summary.
+Detailed benchmark design and metric definitions are documented in [Evaluation](#evaluation).
 
-It uses a controlled workflow with:
+## What ClauseGuard Does
 
-* Document parsing and clause extraction
-* Shared analysis state through a context bank
-* Local retrieval for legal checklist evidence
-* Rule-based and model-assisted compliance checks
-* Independent verifier review
-* Weighted evidence scoring
-* Structured Pydantic schemas
-* Deterministic mock-model mode for local demos
-* Markdown and JSON report generation
-* Unit tests, smoke tests, and benchmark evaluation
-
-The LLM is used as one part of the system, not as the entire decision-making process.
+- Loads contracts while preserving clause order and source text.
+- Classifies contract type, segments clauses, categorizes provisions, and extracts organizations, dates, monetary values, jurisdictions, and risk terms.
+- Detects missing provisions, ambiguous obligations, one-sided discretion, internal contradictions, structural defects, terminology drift, and risk-allocation issues.
+- Retrieves relevant checklist evidence from a local reference corpus.
+- Sends candidate findings through a separate verifier model before acceptance.
+- Calculates an explainable confidence score from five independently visible components.
+- Drafts safer alternatives for accepted clause-level findings.
+- Produces human-readable Markdown and machine-readable JSON reports.
+- Evaluates standalone detection against labeled contracts without using original-document text as prediction input.
+- Compares original and modified agreements in a separate inspection workflow.
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    A[Document Input: TXT / DOCX / PDF] --> B[Document Loader]
-    B --> C[Preprocessor Agent]
-    C --> D[Context Bank]
-    D --> E[Knowledge Agent / Local RAG]
-    D --> F[Compliance Checker]
-    E --> F
-    F --> G[Verifier Agent]
-    G --> H[Weighted Evidence Scoring]
-    H --> I[Clause Rewriter]
-    I --> J[Postprocessor]
-    J --> K[Markdown + JSON Report]
+flowchart LR
+    A["Contract<br/>TXT / DOCX / PDF"] --> B["Document Loader"]
+    B --> C["Preprocessor Agent<br/>classification + clauses + entities"]
+    C --> D["Context Bank<br/>normalized shared state"]
+    D --> E["Knowledge Agent<br/>local RAG evidence"]
+    D --> F["Compliance Checker<br/>deterministic review rules"]
+    E --> G["Primary Reasoning<br/>explanation + confidence"]
+    F --> G
+    G --> H["Verifier Agent<br/>second-model review"]
+    H --> I["Weighted Scoring<br/>issue-specific thresholds"]
+    I --> J["Clause Rewriter"]
+    J --> K["Postprocessor<br/>Markdown + JSON"]
 ```
 
-## Pipeline Overview
+The `ContextBank` is the shared contract state. Each stage adds structured data rather than passing unvalidated prose between agents, which keeps clause IDs, evidence, findings, scores, and rewrites traceable through the complete run.
 
-| Stage              | Responsibility                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Document Loader    | Reads `.txt`, `.docx`, and `.pdf` files and normalizes extracted text                                               |
-| Preprocessor Agent | Classifies document type, extracts clauses, identifies entities, and tags risk terms                                |
-| Context Bank       | Stores document text, clauses, entities, evidence, findings, rewrites, and report state                             |
-| Knowledge Agent    | Retrieves relevant legal checklist evidence using local vector-style retrieval                                      |
-| Compliance Checker | Flags missing provisions, risky language, vague obligations, broad indemnity, assignment risk, and termination risk |
-| Verifier Agent     | Performs an independent review of candidate findings                                                                |
-| Weighted Scoring   | Combines rules, retrieved evidence, model reasoning, verifier agreement, and clause structure                       |
-| Clause Rewriter    | Generates safer alternatives for accepted clause-level findings                                                     |
-| Postprocessor      | Produces Markdown and JSON reports with evidence, confidence scores, and limitations                                |
+See the [architecture deep dive](docs/ARCHITECTURE.md) for component contracts, failure semantics, retrieval design, and evaluation isolation.
 
-## Key Features
+## Agent Workflow
 
-* Multi-stage agentic legal review workflow
-* TXT, DOCX, and PDF contract input support
-* Structured clause extraction and document classification
-* Shared context memory across pipeline stages
-* Local retrieval-augmented generation for checklist-style legal evidence
-* Independent verifier review for candidate issues
-* Transparent weighted confidence scoring
-* Clause rewrite suggestions for accepted findings
-* Markdown and JSON report generation
-* Mock-model mode for deterministic local demos
-* Benchmark evaluation workflows
-* Unit and smoke test validation
+| Stage | Responsibility | Output |
+|---|---|---|
+| Document Loader | Extracts and normalizes source text | Ordered document text |
+| Preprocessor Agent | Classifies the agreement and extracts structured clauses and entities | Clauses, categories, parties, dates, risk terms |
+| Knowledge Agent | Ranks local checklist references using lexical and feature-hashed vector similarity | Clause- and issue-linked evidence |
+| Compliance Checker | Applies contract-review heuristics and model-assisted review | Candidate findings with rule IDs and signals |
+| Verifier Agent | Independently reviews each candidate | Agreement score and rationale |
+| Weighted Scorer | Combines five evidence channels and applies issue-specific thresholds | Accepted and rejected findings |
+| Clause Rewriter | Drafts balanced alternatives for accepted clause risks | Suggested replacement language |
+| Postprocessor | Serializes the complete analysis | Markdown and JSON reports |
 
-## Weighted Evidence Scoring
+## Detection Coverage
 
-ClauseGuard applies a transparent scoring layer over multiple evidence sources.
+ClauseGuard currently evaluates the following review dimensions:
+
+| Review dimension | Examples |
+|---|---|
+| Missing provisions | Governing law, termination, confidentiality |
+| Missing required language | Incomplete governing-law standards, unresolved section/appendix/schedule references, weakened mandatory obligations |
+| Risky language | Unbounded discretion, vague commitments, one-sided disclaimer language |
+| Internal consistency | Conflicting obligations, override language, incompatible termination terms |
+| Contract structure | Embedded or relocated numbered provisions and obscured hierarchy |
+| Terminology consistency | Party-role drift and inconsistent defined-term capitalization |
+| Risk allocation | Uncapped indemnity, assignment without consent, termination without notice |
+| Commercial clarity | Payment clauses without objective due dates or dispute procedures |
+
+## Explainable Scoring
+
+ClauseGuard does not fine-tune or alter model weights. It computes a decision score from explicit evidence channels:
 
 ```text
-deterministic legal/rule checks      30%
-retrieved evidence/RAG match         25%
-primary model reasoning              20%
-verifier agreement                   15%
-clause structure/consistency         10%
+final score =
+    0.30 * deterministic rule confidence
+  + 0.25 * retrieved evidence relevance
+  + 0.20 * primary reasoning confidence
+  + 0.15 * verifier agreement
+  + 0.10 * clause structure confidence
 ```
 
-Each accepted finding includes component scores and a final confidence score, so the report explains why an issue was accepted instead of returning only a model opinion.
+Issue-specific acceptance thresholds reduce false positives for broad categories such as risky language, terminology drift, and structural flaws. The JSON report retains every component score, rule identifier, detected signal, verifier rationale, and acceptance decision so a reviewer can audit why the system raised an issue.
 
-## Example Output
+## Quick Start
 
-A generated report includes:
-
-* Contract summary
-* Extracted clause list
-* Detected findings
-* Severity level
-* Supporting evidence
-* Component confidence scores
-* Verifier confidence
-* Suggested clause rewrites
-* Legal assistant limitations
-
-See the sample report:
-
-[examples/sample_report.md](examples/sample_report.md)
-
-## Tech Stack
-
-| Area           | Technologies                          |
-| -------------- | ------------------------------------- |
-| Language       | Python                                |
-| CLI            | Python module entry point             |
-| Data Models    | Pydantic                              |
-| Retrieval      | Local hash/lexical retrieval          |
-| LLM Providers  | Groq-compatible model roles           |
-| Evaluation     | Local benchmark workflows             |
-| Testing        | pytest, compile checks, smoke scripts |
-| Output Formats | Markdown, JSON                        |
-| Document Input | TXT, DOCX, PDF                        |
-
-## Model Configuration
-
-Default generation roles use Groq-hosted models, while retrieval uses a local deterministic embedding strategy.
-
-| Role                   | Default                   |
-| ---------------------- | ------------------------- |
-| Extraction             | `llama-3.1-8b-instant`    |
-| Reasoning and rewrites | `llama-3.3-70b-versatile` |
-| Verifier review        | `openai/gpt-oss-120b`     |
-| Retrieval embeddings   | `local-hash-lexical`      |
-
-Model IDs and per-run request/token caps can be changed through `.env.example`.
-
-## Installation
+The project is tested with Python 3.11.
 
 ```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
+git clone https://github.com/arpitJ-dev/ClauseGuard-Agent.git
+cd ClauseGuard-Agent
+python -m venv .venv
 ```
 
-Create a `.env` file from `.env.example`:
+Activate the environment and install dependencies:
 
-```env
-GROQ_API_KEY=your_groq_key_here
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+pip install -e .
 ```
-
-Additional model and usage settings are available in `.env.example`.
-
-## Usage
-
-Run the included demo contract with deterministic mock responses:
 
 ```bash
-python -m legal_lm analyze examples\demo_contract.txt --mock-models
+# macOS / Linux
+source .venv/bin/activate
+pip install -e .
 ```
 
-Run a real model-backed analysis:
+Run the deterministic end-to-end demo:
 
 ```bash
-python -m legal_lm analyze examples\demo_contract.txt
+clauseguard analyze examples/demo_contract.txt --mock-models --output-dir analysis_outputs/demo
 ```
 
-Analyze one of the bundled sample contracts:
-
-```bash
-python -m legal_lm analyze "Original_files\ABILITYINC_06_15_2020-EX-4.25-SERVICES AGREEMENT.txt"
-```
-
-Reports are written to:
+The command writes:
 
 ```text
-analysis_outputs/analysis_report.json
-analysis_outputs/analysis_report.md
+analysis_outputs/demo/analysis_report.md
+analysis_outputs/demo/analysis_report.json
 ```
 
-Show the configured model roles:
+See [the sample analysis report](examples/sample_report.md) for the expected review format.
+
+## Model Roles
+
+For hosted-model execution, create `.env` from `.env.example` and complete the documented runtime configuration.
+
+Run the full cloud-backed workflow:
 
 ```bash
-python -m legal_lm models
+clauseguard analyze path/to/contract.docx --output-dir analysis_outputs/contract_review
 ```
 
-## Benchmark Evaluation
+Default model roles are intentionally separated by task:
 
-The project includes local benchmark paths that can run in mock/local mode without consuming Groq requests.
+| Role | Default endpoint | Purpose |
+|---|---|---|
+| Extraction | `openai/gpt-oss-20b` | Document classification and structured extraction |
+| Reasoning and rewriting | `qwen/qwen3.6-27b` | Legal issue review, explanations, and revised clauses |
+| Verification | `openai/gpt-oss-120b` | Independent second-model assessment |
+| Retrieval | `local-hash-lexical` | Deterministic feature-hashed lexical evidence ranking |
 
-Build the repo-dataset benchmark:
+Model roles are configurable through environment variables. Inspect the active configuration with:
 
 ```bash
-python -m legal_lm build-dataset-benchmark
+clauseguard models
 ```
 
-Run the dataset-backed benchmark:
+## Analysis Modes
+
+### Standalone Contract Review
+
+Reviews one document and generates evidence-backed findings and rewrites:
 
 ```bash
-python -m legal_lm evaluate benchmarks\repo_dataset_benchmark.jsonl --mock-models
+clauseguard analyze path/to/contract.pdf
 ```
 
-Run the smaller seed benchmark:
+### Original-vs-Modified Comparison
+
+Matches clauses between two document versions and reports changed, added, and removed clauses plus removed safeguards and newly introduced risk signals:
 
 ```bash
-python -m legal_lm evaluate benchmarks\seed_contracts.jsonl --mock-models
+clauseguard compare path/to/original.txt path/to/modified.txt
 ```
 
-Benchmark reports are written to:
+Comparison is deliberately separate from standalone analysis. Original-document text is not supplied to the detection pipeline when calculating precision, recall, or F1, preventing paired-document leakage from inflating benchmark results.
+
+### Benchmark Evaluation
+
+Runs labeled evaluation and produces aggregate, per-case, and per-issue metrics with error analysis:
+
+```bash
+clauseguard evaluate benchmarks/repo_dataset_benchmark.jsonl --mock-models
+```
+
+Rebuild the benchmark manifest from the repository dataset with:
+
+```bash
+clauseguard build-dataset-benchmark
+```
+
+## Evaluation
+
+The repository contains two reproducible benchmark suites:
+
+| Benchmark | Cases | Expected labels | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| Seed contracts | 3 | 10 | `1.0000` | `1.0000` | `1.0000` |
+| Repo perturbation dataset | 11 | 19 | `1.0000` | `0.9474` | `0.9730` |
+
+The repo benchmark result corresponds to `18` true positives, `0` false positives, and `1` false negative:
 
 ```text
-analysis_outputs/benchmark_evaluation/benchmark_evaluation.json
+precision = TP / (TP + FP) = 18 / 18 = 1.0000
+recall    = TP / (TP + FN) = 18 / 19 = 0.9474
+F1        = 2PR / (P + R)            = 0.9730
+```
+
+Evaluation is performed at the case-level issue-type boundary. A document either contains an expected issue category or it does not, and duplicate findings do not create additional true positives. The evaluator records findings outside the mapped benchmark taxonomy separately for manual error analysis.
+
+The benchmark builder uses the repository's `31` perturbation records to create labels and trace their source locations. In-text contradictions map to contradiction labels, while placement and hierarchy perturbations map to structural labels. During evaluation, only each modified contract is passed to ClauseGuard. The original contract and perturbation metadata remain evaluation provenance, not model input.
+
+Per-issue metrics, false-positive details, false-negative categories, and model configuration are written to:
+
+```text
 analysis_outputs/benchmark_evaluation/benchmark_evaluation.md
+analysis_outputs/benchmark_evaluation/benchmark_evaluation.json
 ```
 
-Real-model benchmark evaluation is opt-in and capped to one case by default:
+## Engineering Decisions
+
+| Decision | Rationale |
+|---|---|
+| Hybrid rules and LLM reasoning | Deterministic checks provide precision and traceability; model reasoning improves explanations and contextual review. |
+| Separate verifier model | A second model can challenge confidence instead of allowing one generation to validate itself. |
+| Local retrieval | Evidence lookup remains deterministic, inspectable, and independent of a hosted vector database. |
+| Structured Pydantic schemas | Agent boundaries fail early on malformed state and preserve a stable reporting contract. |
+| Weighted acceptance layer | Findings are accepted from combined evidence, not raw model confidence alone. |
+| Standalone benchmark isolation | Original/modified pairs support labeling and comparison but cannot leak into detection metrics. |
+| Deterministic evaluation mode | Tests, demos, and benchmark regressions remain reproducible across runs. |
+| Provider abstraction | Centralized routing standardizes model configuration, structured responses, and failure handling. |
+
+## Reliability and Validation
+
+- Deterministic preprocessing preserves full-document clauses when model extraction is partial.
+- PDF ingestion collapses repeated full-document text layers before clause extraction.
+- Structured response parsing handles fenced or malformed model JSON with explicit errors and tested fallbacks.
+- Configuration and hosted-model failures surface as explicit CLI errors.
+
+Run the complete local validation suite:
 
 ```bash
-python -m legal_lm evaluate benchmarks\seed_contracts.jsonl --real-models --max-cases 1
+python -m pytest -q
+python -m compileall -q clauseguard
+python -m mypy clauseguard
+python -m flake8 clauseguard tests scripts
+python scripts/check_publish_ready.py
 ```
 
-Use this command before any real-model benchmark run to confirm active models and caps:
+Verified status:
 
-```bash
-python -m legal_lm models
-```
-
-## Current Benchmark Results
-
-| Benchmark                 | Cases | Expected Label Instances | Precision |   Recall |       F1 | API Calls |
-| ------------------------- | ----: | -----------------------: | --------: | -------: | -------: | --------: |
-| Seed benchmark            |     3 |                       10 |  `1.0000` | `1.0000` | `1.0000` |         0 |
-| Repo perturbation dataset |    11 |     20 case-level labels |  `0.6154` | `0.8000` | `0.6957` |         0 |
-
-The benchmark numbers are metrics for mapped issue labels, not broad legal accuracy. The repo dataset benchmark is useful for tracking progress, especially contradiction recall and false-positive reduction.
+- `54` automated tests pass with `83%` branch-aware coverage.
+- Packaging, compilation, linting, static typing, and the console entrypoint are validated in CI.
+- A dedicated provider smoke harness validates extraction, reasoning, and verifier roles when credentials are configured.
+- End-to-end analysis produces valid Markdown and JSON for the demo contract and additional bundled agreements.
+- Both benchmark suites produce repeatable aggregate, per-case, and per-issue results.
 
 ## Project Structure
 
 ```text
-legal_lm/
-├── agents/              # v1 agent implementations
-├── cli.py               # command-line entry point
-├── config.py            # environment and model configuration
-├── context.py           # shared analysis state
-├── document.py          # TXT / DOCX / PDF loading
-├── model_router.py      # provider calls and usage guards
-├── pipeline.py          # end-to-end orchestration
-├── rag.py               # local retrieval layer
-├── scoring.py           # weighted evidence scoring
-└── schemas.py           # Pydantic data models
+clauseguard/
+  agents/              # preprocessing, compliance, verification, rewriting
+  cli.py               # analyze, compare, evaluate, models commands
+  comparison.py        # isolated original-vs-modified analysis
+  config.py            # runtime and model configuration
+  context.py           # normalized shared agent state
+  dataset_benchmark.py # dataset-to-benchmark builder
+  document.py          # TXT, DOCX, and PDF loading
+  evaluation.py        # precision, recall, F1, and error analysis
+  model_router.py      # provider routing and structured responses
+  pipeline.py          # end-to-end orchestration
+  rag.py               # local evidence retrieval
+  schemas.py           # Pydantic contracts
+  scoring.py           # weighted acceptance logic
 
-agents/                  # legacy experimental agent modules
-benchmarks/              # labeled benchmark fixtures
-docs/                    # architecture, dataset inventory, and release notes
-examples/                # demo input and sample output
-tests/                   # unit and smoke tests
-scripts/                 # validation and smoke scripts
+benchmarks/            # labeled seed and repository-derived benchmark cases
+data/                  # source contracts, perturbations, and provenance notes
+docs/                  # architecture and dataset documentation
+examples/              # runnable contract and generated report
+scripts/               # provider smoke test and publish-readiness checks
+tests/                 # unit, integration, and regression tests
+.github/workflows/     # automated quality gate
 ```
 
-## Validation
+## Responsible Use
 
-Run tests:
-
-```bash
-python -m pytest -q
-```
-
-Run syntax compilation:
-
-```bash
-python -m compileall legal_lm agents context_bank.py
-```
-
-Run publish-readiness checks:
-
-```bash
-python scripts/check_publish_ready.py
-```
-
-Optional real-provider smoke test:
-
-```bash
-python scripts/smoke_groq.py
-```
-
-## Current Validation Status
-
-* 24 tests pass
-* Syntax compilation passes
-* Full pipeline smoke tests generate Markdown and JSON reports
-* Retrieval uses local deterministic embeddings, so it does not call an external embedding API
-* Seed and repo-dataset benchmarks run in mock/local mode without consuming Groq requests
-* Cloud smoke test has passed for Groq-backed extraction, reasoning, and verifier roles
-
-## Current Project Metrics
-
-| Metric                  | Current Value                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| Supported input types   | `.txt`, `.docx`, `.pdf`                                                                                |
-| Agent workflow stages   | Preprocessor, Knowledge/RAG, Compliance Checker, Verifier, Clause Rewriter, Postprocessor              |
-| Model roles             | 3 Groq generation roles + 1 local retrieval role                                                       |
-| Tests                   | 24 passing tests                                                                                       |
-| Real validation samples | Demo contract, consulting agreement, joint venture agreement                                           |
-| Seed benchmark          | 3 labeled cases, 10 expected issue labels, mock/local precision `1.0000`, recall `1.0000`, F1 `1.0000` |
-| Repo dataset benchmark  | 11 cases from 31 perturbation records, mock/local precision `0.6154`, recall `0.8000`, F1 `0.6957`     |
-
-## Responsible AI and Legal Scope
-
-ClauseGuard Agent is a research and portfolio prototype. It is intended to demonstrate agentic workflow design, legal document parsing, RAG-style retrieval, verifier patterns, scoring transparency, and report generation.
-
-It should not be used as a substitute for a licensed attorney.
-
-## Limitations
-
-* Findings should be reviewed by a qualified legal professional
-* Model responses can be incomplete or incorrect
-* The included local legal references are checklist-style references, not a complete statutory database
-* Benchmark results measure mapped issue labels, not full legal correctness
-* The legacy `agents/` folder contains earlier experimental modules
-* The production-style v1 path is under `legal_lm/`
-
-## Future Work
-
-Planned improvements may include:
-
-* Expanded evaluation against CLAUSE, CUAD, or ContractNLI-style benchmarks
-* Expanded jurisdiction-aware legal reference retrieval
-* Better contradiction classification
-* Richer span-level citations
-* Web or desktop UI for reviewing findings interactively
-* Improved report comparison across contract versions
+ClauseGuard is a decision-support system for contract review. Its findings depend on the supplied document, the configured reference corpus, deterministic rules, and model behavior. Reports should be reviewed by a qualified legal professional before they influence negotiations, compliance decisions, or legal obligations.
 
 ## License
 
-This project code is released under the MIT License.
-
-Bundled benchmark and contract-derived sample files are included for research and portfolio demonstration. Review their source terms before reusing them outside this project.
+The source code is available under the [MIT License](LICENSE). Contract-derived benchmark files retain their underlying source considerations; review the dataset inventory and source terms before redistributing those materials independently.

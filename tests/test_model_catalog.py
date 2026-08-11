@@ -1,11 +1,11 @@
-from legal_lm.config import AppConfig
-from legal_lm.model_catalog import MODEL_ENDPOINTS, configured_model_rows
+from clauseguard.config import AppConfig
+from clauseguard.model_catalog import MODEL_ENDPOINTS, configured_model_rows
 
 
 def test_model_catalog_contains_required_roles():
     assert set(MODEL_ENDPOINTS) == {"extraction", "embedding", "reasoning", "verifier"}
-    assert MODEL_ENDPOINTS["extraction"].default_model == "llama-3.1-8b-instant"
-    assert MODEL_ENDPOINTS["reasoning"].default_model == "llama-3.3-70b-versatile"
+    assert MODEL_ENDPOINTS["extraction"].default_model == "openai/gpt-oss-20b"
+    assert MODEL_ENDPOINTS["reasoning"].default_model == "qwen/qwen3.6-27b"
     assert MODEL_ENDPOINTS["embedding"].default_model == "local-hash-lexical"
     assert MODEL_ENDPOINTS["verifier"].default_model == "openai/gpt-oss-120b"
 
