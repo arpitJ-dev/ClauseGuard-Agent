@@ -26,6 +26,7 @@ type Config struct {
 	PythonExecutable  string
 	Workspace         string
 	DataDir           string
+	WebDir            string
 	MaxUploadBytes    int64
 	JobTimeout        time.Duration
 	MaxConcurrentJobs int
@@ -52,6 +53,16 @@ func Load() (Config, error) {
 	dataDir, err = filepath.Abs(dataDir)
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve data directory: %w", err)
+	}
+	webDir := strings.TrimSpace(os.Getenv("CLAUSEGUARD_WEB_DIR"))
+	if webDir == "" {
+		webDir = filepath.Join(workspace, "apps", "web", "dist")
+	} else if !filepath.IsAbs(webDir) {
+		webDir = filepath.Join(workspace, webDir)
+	}
+	webDir, err = filepath.Abs(webDir)
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve web directory: %w", err)
 	}
 
 	maxUploadBytes, err := positiveInt64("CLAUSEGUARD_MAX_UPLOAD_BYTES", defaultMaxUploadBytes)
@@ -92,6 +103,7 @@ func Load() (Config, error) {
 		PythonExecutable:  python,
 		Workspace:         workspace,
 		DataDir:           dataDir,
+		WebDir:            webDir,
 		MaxUploadBytes:    maxUploadBytes,
 		JobTimeout:        jobTimeout,
 		MaxConcurrentJobs: maxConcurrentJobs,

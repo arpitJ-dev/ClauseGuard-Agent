@@ -28,9 +28,12 @@ export function JobProgress({ job, connected, onCancel }: JobProgressProps) {
         </span>
       </div>
       <p>{job.message}</p>
-      <div className="progress-track" aria-label={`${progress}% complete`}>
-        <span style={{ width: `${progress}%` }} />
-      </div>
+      <progress
+        className="progress-track"
+        max={100}
+        value={progress}
+        aria-label={`${progress}% complete`}
+      />
       <div className="progress-footer">
         <strong>{progress}%</strong>
         <button type="button" className="secondary-button danger-text" onClick={onCancel}>

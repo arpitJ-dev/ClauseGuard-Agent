@@ -19,13 +19,15 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(signalContext); err != nil {
 		slog.Error("ClauseGuard server stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(runContext context.Context) error {
 	settings, err := config.Load()
 	if err != nil {
 		return err
@@ -52,11 +54,14 @@ func run() error {
 	}
 	handler, err := api.New(manager, api.Config{
 		DataDir:        settings.DataDir,
+		WebDir:         settings.WebDir,
 		MaxUploadBytes: settings.MaxUploadBytes,
 		AllowedOrigin:  settings.AllowedOrigin,
 	})
 	if err != nil {
-		return err
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return errors.Join(err, manager.Shutdown(shutdownContext))
 	}
 
 	httpServer := &http.Server{
@@ -71,18 +76,18 @@ func run() error {
 		slog.Info(
 			"ClauseGuard control plane listening",
 			"address", settings.Address,
+			"web_dir", settings.WebDir,
 			"mock_models", settings.MockModels,
 		)
 		serverErrors <- httpServer.ListenAndServe()
 	}()
 
-	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	var listenError error
 	select {
-	case <-signalContext.Done():
+	case <-runContext.Done():
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
-			return err
+			listenError = err
 		}
 	}
 
@@ -94,5 +99,5 @@ func run() error {
 	}()
 	managerError := manager.Shutdown(shutdownContext)
 	serverError := <-serverShutdown
-	return errors.Join(serverError, managerError)
+	return errors.Join(listenError, serverError, managerError)
 }

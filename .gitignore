@@ -12,7 +12,8 @@ env/
 
 # Vectorstore
 qdrant_storage
-.clauseguard/
+.clauseguard*/
+.runtime-*/
 analysis_outputs/
 test_outputs/
 

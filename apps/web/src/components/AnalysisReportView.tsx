@@ -92,9 +92,12 @@ function FindingCard({
                 return (
                   <div className="score-row" key={key}>
                     <span>{label}</span>
-                    <span className="mini-track" aria-label={`${label}: ${formatScore(value)}`}>
-                      <i style={{ width: formatScore(value) }} />
-                    </span>
+                    <progress
+                      className="mini-track"
+                      max={1}
+                      value={value}
+                      aria-label={`${label}: ${formatScore(value)}`}
+                    />
                     <strong>{formatScore(value)}</strong>
                   </div>
                 );

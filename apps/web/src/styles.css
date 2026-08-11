@@ -706,7 +706,10 @@ p {
 .progress-track,
 .mini-track {
   display: block;
+  width: 100%;
   overflow: hidden;
+  appearance: none;
+  border: 0;
   background: #e7ebe9;
   border-radius: 4px;
 }
@@ -715,13 +718,18 @@ p {
   height: 8px;
 }
 
-.progress-track > span,
-.mini-track > i {
-  display: block;
-  height: 100%;
+.progress-track::-webkit-progress-bar,
+.mini-track::-webkit-progress-bar {
+  background: #e7ebe9;
+  border-radius: inherit;
+}
+
+.progress-track::-webkit-progress-value,
+.mini-track::-webkit-progress-value,
+.progress-track::-moz-progress-bar,
+.mini-track::-moz-progress-bar {
   background: var(--accent);
   border-radius: inherit;
-  transition: width 220ms ease;
 }
 
 .progress-footer {

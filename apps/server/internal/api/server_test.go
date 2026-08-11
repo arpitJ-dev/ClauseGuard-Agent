@@ -342,6 +342,62 @@ func TestShuttingDownReturnsUnavailable(t *testing.T) {
 	}
 }
 
+func TestWebBundleAndSPARoutesAreServed(t *testing.T) {
+	webDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(webDir, "assets"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<main>ClauseGuard</main>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "assets", "app.js"), []byte("console.log('ready')"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := &stubService{health: domain.Health{Ready: true}}
+	handler, err := New(service, Config{DataDir: t.TempDir(), WebDir: webDir, MaxUploadBytes: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, route := range []string{"/", "/reviews/current"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, route, nil))
+		if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "ClauseGuard") {
+			t.Fatalf("SPA route %s returned %d: %s", route, recorder.Code, recorder.Body.String())
+		}
+		if recorder.Header().Get("Content-Security-Policy") == "" {
+			t.Fatalf("SPA route %s omitted browser security headers", route)
+		}
+	}
+
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
+	if asset.Code != http.StatusOK || asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset was not served with immutable caching: %d %+v", asset.Code, asset.Header())
+	}
+
+	missingAsset := httptest.NewRecorder()
+	handler.ServeHTTP(missingAsset, httptest.NewRequest(http.MethodGet, "/assets/missing.js", nil))
+	if missingAsset.Code != http.StatusNotFound {
+		t.Fatalf("missing asset returned %d", missingAsset.Code)
+	}
+
+	missingAPI := httptest.NewRecorder()
+	handler.ServeHTTP(missingAPI, httptest.NewRequest(http.MethodGet, "/api/v1/missing", nil))
+	if missingAPI.Code != http.StatusNotFound || !strings.Contains(missingAPI.Body.String(), "route_not_found") {
+		t.Fatalf("unknown API route returned %d: %s", missingAPI.Code, missingAPI.Body.String())
+	}
+}
+
+func TestWebBundleMustContainIndex(t *testing.T) {
+	_, err := New(&stubService{}, Config{
+		DataDir: t.TempDir(), WebDir: t.TempDir(), MaxUploadBytes: 1 << 20,
+	})
+	if err == nil || !strings.Contains(err.Error(), "web bundle not found") {
+		t.Fatalf("missing web bundle returned %v", err)
+	}
+}
+
 type upload struct {
 	name    string
 	content string

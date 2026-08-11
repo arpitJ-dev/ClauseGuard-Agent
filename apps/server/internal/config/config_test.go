@@ -18,6 +18,7 @@ func TestLoadUsesValidatedEnvironment(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "runtime")
 	t.Setenv("CLAUSEGUARD_WORKSPACE", workspace)
 	t.Setenv("CLAUSEGUARD_DATA_DIR", dataDir)
+	t.Setenv("CLAUSEGUARD_WEB_DIR", "web-build")
 	t.Setenv("CLAUSEGUARD_PYTHON", "python-test")
 	t.Setenv("CLAUSEGUARD_SERVER_ADDR", "127.0.0.1:9000")
 	t.Setenv("CLAUSEGUARD_MAX_UPLOAD_BYTES", "4096")
@@ -33,6 +34,9 @@ func TestLoadUsesValidatedEnvironment(t *testing.T) {
 	}
 	if loaded.Workspace != workspace || loaded.DataDir != dataDir {
 		t.Fatalf("unexpected paths: %+v", loaded)
+	}
+	if loaded.WebDir != filepath.Join(workspace, "web-build") {
+		t.Fatalf("unexpected web directory: %q", loaded.WebDir)
 	}
 	if loaded.PythonExecutable != "python-test" || loaded.Address != "127.0.0.1:9000" {
 		t.Fatalf("unexpected process configuration: %+v", loaded)

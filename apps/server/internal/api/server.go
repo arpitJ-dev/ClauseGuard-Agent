@@ -43,6 +43,7 @@ type JobService interface {
 
 type Config struct {
 	DataDir        string
+	WebDir         string
 	MaxUploadBytes int64
 	AllowedOrigin  string
 }
@@ -50,6 +51,7 @@ type Config struct {
 type Server struct {
 	service        JobService
 	dataDir        string
+	webDir         string
 	maxUploadBytes int64
 	allowedOrigin  string
 }
@@ -74,9 +76,22 @@ func New(service JobService, config Config) (http.Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve API data directory: %w", err)
 	}
+	webDir := strings.TrimSpace(config.WebDir)
+	if webDir != "" {
+		webDir, err = filepath.Abs(webDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve web directory: %w", err)
+		}
+		indexPath := filepath.Join(webDir, "index.html")
+		indexInfo, statErr := os.Stat(indexPath)
+		if statErr != nil || indexInfo.IsDir() {
+			return nil, fmt.Errorf("web bundle not found at %s; run the frontend build first", indexPath)
+		}
+	}
 	server := &Server{
 		service:        service,
 		dataDir:        dataDir,
+		webDir:         webDir,
 		maxUploadBytes: config.MaxUploadBytes,
 		allowedOrigin:  strings.TrimSpace(config.AllowedOrigin),
 	}
@@ -90,7 +105,41 @@ func New(service JobService, config Config) (http.Handler, error) {
 	mux.HandleFunc("GET /api/v1/jobs/{id}/report", server.handleReport)
 	mux.HandleFunc("DELETE /api/v1/jobs/{id}", server.handleDeleteJob)
 	mux.HandleFunc("GET /api/v1/health", server.handleHealth)
+	mux.HandleFunc("/", server.handleWeb)
 	return server.middleware(mux), nil
+}
+
+func (server *Server) handleWeb(writer http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/api/") || server.webDir == "" {
+		writeError(writer, http.StatusNotFound, "route_not_found", "The requested route does not exist.")
+		return
+	}
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		writeError(writer, http.StatusMethodNotAllowed, "method_not_allowed", "The request method is not allowed.")
+		return
+	}
+
+	cleaned := path.Clean("/" + request.URL.Path)
+	if cleaned != "/" {
+		relative := strings.TrimPrefix(cleaned, "/")
+		target := filepath.Join(server.webDir, filepath.FromSlash(relative))
+		if within(server.webDir, target) {
+			if info, err := os.Stat(target); err == nil && !info.IsDir() {
+				if strings.HasPrefix(cleaned, "/assets/") {
+					writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				http.ServeFile(writer, request, target)
+				return
+			}
+		}
+		if filepath.Ext(cleaned) != "" {
+			http.NotFound(writer, request)
+			return
+		}
+	}
+
+	writer.Header().Set("Cache-Control", "no-cache")
+	http.ServeFile(writer, request, filepath.Join(server.webDir, "index.html"))
 }
 
 func (server *Server) handleAnalysis(writer http.ResponseWriter, request *http.Request) {
@@ -378,6 +427,8 @@ func (server *Server) middleware(next http.Handler) http.Handler {
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		writer.Header().Set("Referrer-Policy", "no-referrer")
 		writer.Header().Set("X-Frame-Options", "DENY")
+		writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		origin := strings.TrimSpace(request.Header.Get("Origin"))
 		if origin != "" {
 			if !server.originAllowed(request, origin) {
