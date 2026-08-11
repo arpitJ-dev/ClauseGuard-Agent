@@ -57,3 +57,10 @@ process.ipynb
 /apps/server/clauseguard-server
 /apps/server/clauseguard-server.exe
 /apps/server/coverage.out
+
+# Web workbench
+/apps/web/node_modules/
+/apps/web/dist/
+/apps/web/coverage/
+/apps/web/playwright-report/
+/apps/web/test-results/
