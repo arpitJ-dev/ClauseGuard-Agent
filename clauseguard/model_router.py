@@ -23,6 +23,10 @@ class UsageLimitError(ModelCallError):
     pass
 
 
+class ModelTimeoutError(ModelCallError):
+    pass
+
+
 class UsageLimiter:
     """Per-run request and estimated input-token guard for cloud model calls."""
 
@@ -124,11 +128,13 @@ class ModelRouter:
                 json=payload,
                 timeout=60,
             )
+        except requests.Timeout as exc:
+            raise ModelTimeoutError(f"Groq call timed out for {model_name}.") from exc
         except requests.RequestException as exc:
             raise ModelCallError(f"Groq call failed for {model_name}: {exc}") from exc
 
         if response.status_code == 429:
-            raise ModelCallError(
+            raise UsageLimitError(
                 f"Groq rate limit was reached for {model_name}. Retry later, lower local caps, "
                 "or use --mock-models."
             )

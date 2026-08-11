@@ -1,0 +1,267 @@
+{
+  "$defs": {
+    "ClauseDelta": {
+      "properties": {
+        "modified_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modified Category"
+        },
+        "modified_clause_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modified Clause Id"
+        },
+        "modified_preview": {
+          "default": "",
+          "title": "Modified Preview",
+          "type": "string"
+        },
+        "modified_risk_terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Modified Risk Terms",
+          "type": "array"
+        },
+        "modified_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modified Title"
+        },
+        "original_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Category"
+        },
+        "original_clause_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Clause Id"
+        },
+        "original_preview": {
+          "default": "",
+          "title": "Original Preview",
+          "type": "string"
+        },
+        "original_risk_terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Original Risk Terms",
+          "type": "array"
+        },
+        "original_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Original Title"
+        },
+        "similarity": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Similarity",
+          "type": "number"
+        },
+        "status": {
+          "enum": [
+            "unchanged",
+            "changed",
+            "added",
+            "removed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "similarity"
+      ],
+      "title": "ClauseDelta",
+      "type": "object"
+    },
+    "ComparisonRiskSignal": {
+      "properties": {
+        "clause": {
+          "title": "Clause",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "clause",
+        "detail",
+        "severity"
+      ],
+      "title": "ComparisonRiskSignal",
+      "type": "object"
+    },
+    "ComparisonSummary": {
+      "properties": {
+        "added": {
+          "minimum": 0,
+          "title": "Added",
+          "type": "integer"
+        },
+        "changed": {
+          "minimum": 0,
+          "title": "Changed",
+          "type": "integer"
+        },
+        "matched": {
+          "minimum": 0,
+          "title": "Matched",
+          "type": "integer"
+        },
+        "removed": {
+          "minimum": 0,
+          "title": "Removed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "matched",
+        "changed",
+        "added",
+        "removed"
+      ],
+      "title": "ComparisonSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "clause_deltas": {
+      "items": {
+        "$ref": "#/$defs/ClauseDelta"
+      },
+      "title": "Clause Deltas",
+      "type": "array"
+    },
+    "comparison_id": {
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "modified_clause_count": {
+      "minimum": 0,
+      "title": "Modified Clause Count",
+      "type": "integer"
+    },
+    "modified_document": {
+      "title": "Modified Document",
+      "type": "string"
+    },
+    "modified_type": {
+      "title": "Modified Type",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "original_clause_count": {
+      "minimum": 0,
+      "title": "Original Clause Count",
+      "type": "integer"
+    },
+    "original_document": {
+      "title": "Original Document",
+      "type": "string"
+    },
+    "original_type": {
+      "title": "Original Type",
+      "type": "string"
+    },
+    "risk_signals": {
+      "items": {
+        "$ref": "#/$defs/ComparisonRiskSignal"
+      },
+      "title": "Risk Signals",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/ComparisonSummary"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "original_document",
+    "modified_document",
+    "original_type",
+    "modified_type",
+    "original_clause_count",
+    "modified_clause_count",
+    "summary",
+    "clause_deltas",
+    "risk_signals"
+  ],
+  "title": "ComparisonReport",
+  "type": "object"
+}

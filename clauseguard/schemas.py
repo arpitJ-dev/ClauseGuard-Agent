@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 Severity = Literal["LOW", "MEDIUM", "HIGH"]
 VerifierStatus = Literal["verified", "not_run", "unavailable"]
+SCHEMA_VERSION: Literal["1.0"] = "1.0"
 
 
 class LoadedDocument(BaseModel):
@@ -97,6 +98,7 @@ class Rewrite(BaseModel):
 
 
 class AnalysisReport(BaseModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
     document_id: str
     file_path: str
     title: str
@@ -117,3 +119,47 @@ class AnalysisReport(BaseModel):
             "Coverage depends on the configured rule set, reference corpus, and document quality.",
         ]
     )
+
+
+class ComparisonSummary(BaseModel):
+    matched: int = Field(ge=0)
+    changed: int = Field(ge=0)
+    added: int = Field(ge=0)
+    removed: int = Field(ge=0)
+
+
+class ClauseDelta(BaseModel):
+    status: Literal["unchanged", "changed", "added", "removed"]
+    similarity: float = Field(ge=0.0, le=1.0)
+    original_clause_id: Optional[str] = None
+    original_title: Optional[str] = None
+    original_category: Optional[str] = None
+    modified_clause_id: Optional[str] = None
+    modified_title: Optional[str] = None
+    modified_category: Optional[str] = None
+    original_risk_terms: List[str] = Field(default_factory=list)
+    modified_risk_terms: List[str] = Field(default_factory=list)
+    original_preview: str = ""
+    modified_preview: str = ""
+
+
+class ComparisonRiskSignal(BaseModel):
+    type: str
+    clause: str
+    detail: str
+    severity: Severity
+
+
+class ComparisonReport(BaseModel):
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    comparison_id: str
+    original_document: str
+    modified_document: str
+    original_type: str
+    modified_type: str
+    original_clause_count: int = Field(ge=0)
+    modified_clause_count: int = Field(ge=0)
+    summary: ComparisonSummary
+    clause_deltas: List[ClauseDelta]
+    risk_signals: List[ComparisonRiskSignal]
+    notes: List[str] = Field(default_factory=list)

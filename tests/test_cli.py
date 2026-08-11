@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from clauseguard.cli import main
+from clauseguard.exit_codes import ExitCode
 
 
 def test_models_command_emits_json(capsys):
@@ -54,7 +57,76 @@ def test_analyze_command_returns_clean_error_for_missing_document(tmp_path: Path
     exit_code = main(["analyze", str(tmp_path / "missing.txt"), "--mock-models"])
 
     captured = capsys.readouterr()
-    assert exit_code == 2
+    assert exit_code == ExitCode.DOCUMENT
+    assert "Document not found" in captured.err
+
+
+def test_analyze_command_emits_versioned_progress_events(tmp_path: Path, capsys):
+    document = tmp_path / "agreement.txt"
+    document.write_text(
+        "SERVICES AGREEMENT\n\n1. Payment. Customer shall pay within thirty days.",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "reports"
+
+    exit_code = main(
+        [
+            "analyze",
+            str(document),
+            "--mock-models",
+            "--events-jsonl",
+            "--format",
+            "json",
+            "--run-id",
+            "analysis-test-1",
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines()]
+    assert exit_code == ExitCode.SUCCESS
+    assert captured.err == ""
+    assert events[0]["stage"] == "queued"
+    assert events[-1]["type"] == "completed"
+    assert events[-1]["run_id"] == "analysis-test-1"
+    assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
+    assert {event["stage"] for event in events} >= {
+        "loading",
+        "extracting",
+        "retrieving",
+        "checking",
+        "verifying",
+        "scoring",
+        "rewriting",
+        "reporting",
+        "completed",
+    }
+    assert all(event["schema_version"] == "1.0" for event in events)
+    report = json.loads((output_dir / "analysis_report.json").read_text(encoding="utf-8"))
+    assert report["schema_version"] == "1.0"
+    assert report["document_id"] == "analysis-test-1"
+
+
+def test_analyze_event_stream_reports_typed_document_error(tmp_path: Path, capsys):
+    exit_code = main(
+        [
+            "analyze",
+            str(tmp_path / "missing.txt"),
+            "--mock-models",
+            "--events-jsonl",
+            "--run-id",
+            "missing-document",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines()]
+    assert exit_code == ExitCode.DOCUMENT
+    assert events[-1]["type"] == "error"
+    assert events[-1]["error"]["code"] == "document_error"
+    assert events[-1]["details"]["exit_code"] == ExitCode.DOCUMENT
     assert "Document not found" in captured.err
 
 
@@ -83,6 +155,63 @@ def test_compare_command_writes_comparison_report(tmp_path: Path, capsys):
     assert exit_code == 0
     assert (output_dir / "comparison_report.json").exists()
     assert "Comparison complete" in capsys.readouterr().out
+
+
+def test_compare_command_emits_machine_events(tmp_path: Path, capsys):
+    original = tmp_path / "original.txt"
+    modified = tmp_path / "modified.txt"
+    original.write_text(
+        "SUPPLY AGREEMENT\n\n1. Assignment. Neither party may assign without consent.",
+        encoding="utf-8",
+    )
+    modified.write_text(
+        "SUPPLY AGREEMENT\n\n1. Assignment. Supplier may assign without consent.",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "compare",
+            str(original),
+            str(modified),
+            "--events-jsonl",
+            "--format",
+            "json",
+            "--run-id",
+            "comparison-test-1",
+            "--output-dir",
+            str(tmp_path / "comparison"),
+        ]
+    )
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert exit_code == ExitCode.SUCCESS
+    assert events[-1]["type"] == "completed"
+    assert events[-1]["details"]["comparison_id"] == "comparison-test-1"
+    assert "comparing" in {event["stage"] for event in events}
+    assert (tmp_path / "comparison" / "comparison_report.json").exists()
+    assert not (tmp_path / "comparison" / "comparison_report.md").exists()
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "expected_title"),
+    [
+        ("analysis-report", "AnalysisReport"),
+        ("comparison-report", "ComparisonReport"),
+        ("progress-event", "ProgressEvent"),
+    ],
+)
+def test_schema_command_exports_versioned_contract(
+    tmp_path: Path, schema_name: str, expected_title: str
+):
+    output = tmp_path / f"{schema_name}.schema.json"
+
+    exit_code = main(["schema", schema_name, "--output", str(output)])
+
+    schema = json.loads(output.read_text(encoding="utf-8"))
+    assert exit_code == ExitCode.SUCCESS
+    assert schema["title"] == expected_title
+    assert schema["properties"]["schema_version"]["const"] == "1.0"
 
 
 def test_evaluate_command_runs_local_benchmark(tmp_path: Path, capsys):
