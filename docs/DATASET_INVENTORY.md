@@ -2,6 +2,10 @@
 
 This inventory is generated from the repo's local contract perturbation dataset.
 
+The files are an 11-case regression subset of the CLAUSE benchmark published with
+Choudhury et al. (EACL 2026). See [`data/NOTICE.md`](../data/NOTICE.md) for source,
+licensing, and citation details.
+
 ## Summary
 
 | Metric | Value |
@@ -47,3 +51,4 @@ Benchmark manifest: `benchmarks/repo_dataset_benchmark.jsonl`
 - Evaluation uses case-level issue labels mapped from the perturbation metadata.
 - Only modified contracts are passed to the detection pipeline; original documents remain provenance for the labels.
 - The manifest retains source paths and changed-text previews for reproducible error analysis.
+- Counts describe the bundled subset, not the complete upstream CLAUSE corpus.

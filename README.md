@@ -1,102 +1,84 @@
 # ClauseGuard Agent
 
+[![CI](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/codeql.yml/badge.svg)](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/codeql.yml)
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-54%20passing-2EA44F)
-![Coverage](https://img.shields.io/badge/coverage-83%25-2EA44F)
-![Benchmark F1](https://img.shields.io/badge/repo%20benchmark-F1%200.9730-2EA44F)
-![License](https://img.shields.io/badge/license-MIT-yellow)
+![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-20232A?logo=react&logoColor=61DAFB)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Agentic contract risk analysis with evidence retrieval, separate-model verification, transparent scoring, and clause rewrites.**
+**An agentic contract-review workbench that turns legal documents into traceable risk findings, supporting evidence, decision scores, and suggested clause rewrites.**
 
-ClauseGuard Agent turns `.txt`, `.docx`, and `.pdf` contracts into structured, auditable review reports. Instead of asking one language model to review an entire agreement in a single prompt, it coordinates specialized agents and combines deterministic contract-review rules, local retrieval, model reasoning, verifier agreement, and document-structure signals.
+ClauseGuard Agent combines deterministic contract checks, local retrieval, specialized model roles, independent verification, and transparent weighted scoring. A React workbench drives a Go control plane, which runs the Python analysis engine through a versioned event protocol and persists review jobs in SQLite.
 
-The project originated from the SAUL idea, "Smart Agents for Understanding Law," and develops that concept into a testable software system rather than a single-prompt LLM wrapper.
+![ClauseGuard Agent review workbench](docs/workbench.png)
 
-The result is a review workflow that identifies risky or missing language, cites supporting evidence, explains its confidence, and proposes safer wording while aiming to preserve the original business intent.
+## Why ClauseGuard
 
-> ClauseGuard supports legal review; it does not provide legal advice or replace a qualified attorney.
+Single-prompt contract review is difficult to audit: the extraction, legal reasoning, confidence, and rewrite can all fail inside one opaque response. ClauseGuard decomposes that workflow into explicit stages and keeps the supporting state attached to every finding.
 
-## Results at a Glance
-
-| Capability | Verified result |
-|---|---:|
-| Supported document formats | `.txt`, `.docx`, `.pdf` |
-| Specialized pipeline agents | 6 |
-| Automated tests | 54 passing |
-| Statement and branch coverage | 83% |
-| Repo benchmark cases | 11 |
-| Expected benchmark labels | 19 |
-| Repo benchmark precision | `1.0000` |
-| Repo benchmark recall | `0.9474` |
-| Repo benchmark F1 | `0.9730` |
-
-Detailed benchmark design and metric definitions are documented in [Evaluation](#evaluation).
-
-## What ClauseGuard Does
-
-- Loads contracts while preserving clause order and source text.
-- Classifies contract type, segments clauses, categorizes provisions, and extracts organizations, dates, monetary values, jurisdictions, and risk terms.
-- Detects missing provisions, ambiguous obligations, one-sided discretion, internal contradictions, structural defects, terminology drift, and risk-allocation issues.
-- Retrieves relevant checklist evidence from a local reference corpus.
-- Sends candidate findings through a separate verifier model before acceptance.
-- Calculates an explainable confidence score from five independently visible components.
-- Drafts safer alternatives for accepted clause-level findings.
-- Produces human-readable Markdown and machine-readable JSON reports.
-- Evaluates standalone detection against labeled contracts without using original-document text as prediction input.
-- Compares original and modified agreements in a separate inspection workflow.
+- Ingests `.txt`, `.docx`, and `.pdf` agreements while preserving source order.
+- Extracts clauses, parties, dates, obligations, jurisdictions, monetary terms, and risk language.
+- Detects missing provisions, ambiguous obligations, one-sided discretion, internal contradictions, terminology drift, structural defects, and risk-allocation issues.
+- Retrieves issue-specific evidence from a local reference corpus.
+- Routes candidate findings through an independent verifier role.
+- Accepts or rejects findings with an inspectable five-component score.
+- Drafts replacement language while retaining the affected clause and rationale.
+- Supports standalone review and isolated original-versus-modified comparison.
+- Exposes live progress, report navigation, JSON export, job history, and cancellation in the browser.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["Contract<br/>TXT / DOCX / PDF"] --> B["Document Loader"]
-    B --> C["Preprocessor Agent<br/>classification + clauses + entities"]
-    C --> D["Context Bank<br/>normalized shared state"]
-    D --> E["Knowledge Agent<br/>local RAG evidence"]
-    D --> F["Compliance Checker<br/>deterministic review rules"]
-    E --> G["Primary Reasoning<br/>explanation + confidence"]
-    F --> G
-    G --> H["Verifier Agent<br/>second-model review"]
-    H --> I["Weighted Scoring<br/>issue-specific thresholds"]
-    I --> J["Clause Rewriter"]
-    J --> K["Postprocessor<br/>Markdown + JSON"]
+    U["Reviewer"] --> W["React + TypeScript workbench"]
+    W -->|"uploads and JSON"| A["Go HTTP control plane"]
+    A -->|"SSE progress"| W
+    A --> J[("SQLite job store")]
+    A --> F[("isolated job files")]
+    A -->|"versioned JSONL events"| P["Python analysis engine"]
+
+    subgraph Pipeline["Agentic review pipeline"]
+        P --> L["Document loader"]
+        L --> X["Preprocessor"]
+        X --> C["Context bank"]
+        C --> R["Local evidence retrieval"]
+        C --> D["Compliance checks"]
+        R --> M["Reasoning"]
+        D --> M
+        M --> V["Independent verifier"]
+        V --> S["Weighted decision"]
+        S --> Q["Clause rewriter"]
+        Q --> O["Report builder"]
+    end
+
+    O --> F
+    F --> A
 ```
 
-The `ContextBank` is the shared contract state. Each stage adds structured data rather than passing unvalidated prose between agents, which keeps clause IDs, evidence, findings, scores, and rewrites traceable through the complete run.
+The Go service owns transport and lifecycle concerns: upload validation, queue capacity, process timeouts, cancellation, job recovery, persistence, and production web serving. The Python engine owns legal document analysis. Their JSON-lines protocol keeps the boundary language-neutral and makes progress and failure states observable.
 
-See the [architecture deep dive](docs/ARCHITECTURE.md) for component contracts, failure semantics, retrieval design, and evaluation isolation.
+See [Architecture](docs/ARCHITECTURE.md) for component contracts, schemas, failure semantics, and evaluation isolation.
 
-## Agent Workflow
+## Analysis Pipeline
 
-| Stage | Responsibility | Output |
+| Stage | Responsibility | Traceable output |
 |---|---|---|
-| Document Loader | Extracts and normalizes source text | Ordered document text |
-| Preprocessor Agent | Classifies the agreement and extracts structured clauses and entities | Clauses, categories, parties, dates, risk terms |
-| Knowledge Agent | Ranks local checklist references using lexical and feature-hashed vector similarity | Clause- and issue-linked evidence |
-| Compliance Checker | Applies contract-review heuristics and model-assisted review | Candidate findings with rule IDs and signals |
-| Verifier Agent | Independently reviews each candidate | Agreement score and rationale |
-| Weighted Scorer | Combines five evidence channels and applies issue-specific thresholds | Accepted and rejected findings |
-| Clause Rewriter | Drafts balanced alternatives for accepted clause risks | Suggested replacement language |
-| Postprocessor | Serializes the complete analysis | Markdown and JSON reports |
+| Document loader | Validates and normalizes TXT, DOCX, and PDF input | Ordered source text and metadata |
+| Preprocessor | Classifies the agreement and extracts clauses and entities | Stable clause IDs, categories, parties, dates, and terms |
+| Knowledge agent | Ranks checklist references with lexical and feature-hashed similarity | Clause- and issue-linked evidence |
+| Compliance checker | Applies deterministic and contextual review rules | Candidate findings, rule IDs, and detected signals |
+| Reasoning role | Explains candidate risks in contract context | Rationale and primary confidence |
+| Verifier agent | Reviews candidates through an independent model route | Agreement score, status, and verifier rationale |
+| Weighted scorer | Combines five evidence channels with issue-specific thresholds | Accepted and rejected findings |
+| Clause rewriter | Produces balanced alternatives for accepted risks | Replacement language and change explanation |
+| Postprocessor | Validates and serializes the analysis state | Browser report, Markdown, and JSON |
 
-## Detection Coverage
+All stages write structured objects into a shared `ContextBank`. Clause IDs, evidence IDs, rule identifiers, component scores, verifier decisions, and rewrites remain linked through the final report.
 
-ClauseGuard currently evaluates the following review dimensions:
+## Explainable Decisions
 
-| Review dimension | Examples |
-|---|---|
-| Missing provisions | Governing law, termination, confidentiality |
-| Missing required language | Incomplete governing-law standards, unresolved section/appendix/schedule references, weakened mandatory obligations |
-| Risky language | Unbounded discretion, vague commitments, one-sided disclaimer language |
-| Internal consistency | Conflicting obligations, override language, incompatible termination terms |
-| Contract structure | Embedded or relocated numbered provisions and obscured hierarchy |
-| Terminology consistency | Party-role drift and inconsistent defined-term capitalization |
-| Risk allocation | Uncapped indemnity, assignment without consent, termination without notice |
-| Commercial clarity | Payment clauses without objective due dates or dispute procedures |
-
-## Explainable Scoring
-
-ClauseGuard does not fine-tune or alter model weights. It computes a decision score from explicit evidence channels:
+ClauseGuard does not treat raw model confidence as the final decision. It computes a transparent score for each candidate:
 
 ```text
 final score =
@@ -104,14 +86,39 @@ final score =
   + 0.25 * retrieved evidence relevance
   + 0.20 * primary reasoning confidence
   + 0.15 * verifier agreement
-  + 0.10 * clause structure confidence
+  + 0.10 * document consistency
 ```
 
-Issue-specific acceptance thresholds reduce false positives for broad categories such as risky language, terminology drift, and structural flaws. The JSON report retains every component score, rule identifier, detected signal, verifier rationale, and acceptance decision so a reviewer can audit why the system raised an issue.
+Issue-specific thresholds make broad categories such as risky language and terminology drift harder to accept than high-signal structural checks. Reports retain every component, threshold, signal, evidence item, and acceptance decision.
 
-## Quick Start
+## Evaluation
 
-The project is tested with Python 3.11.
+ClauseGuard includes two versioned regression suites. Evaluation is performed at the case-level issue-type boundary: an expected category counts once per contract, and duplicate findings cannot inflate the score.
+
+| Suite | Cases | Expected labels | TP | FP | FN | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Focused seed contracts | 3 | 10 | 10 | 0 | 0 | `1.0000` | `1.0000` | `1.0000` |
+| Repository perturbation suite | 11 | 19 | 18 | 0 | 1 | `1.0000` | `0.9474` | `0.9730` |
+
+The repository suite is generated from 31 labeled perturbation records. During evaluation, ClauseGuard receives only the modified agreement. Original contracts and change metadata remain label provenance and are used separately by comparison mode, preventing paired-document leakage into precision, recall, and F1.
+
+```text
+precision = TP / (TP + FP) = 18 / 18 = 1.0000
+recall    = TP / (TP + FN) = 18 / 19 = 0.9474
+F1        = 2 * precision * recall / (precision + recall) = 0.9730
+```
+
+Per-case errors, per-issue metrics, unmatched findings, and provenance are written with every evaluation run. Dataset sources and redistribution boundaries are documented in [Dataset Notice](data/NOTICE.md).
+
+## Run the Demo
+
+### Prerequisites
+
+- Python 3.11+
+- Go 1.25+
+- Node.js 22+
+
+### Browser Workbench
 
 ```bash
 git clone https://github.com/arpitJ-dev/ClauseGuard-Agent.git
@@ -119,191 +126,134 @@ cd ClauseGuard-Agent
 python -m venv .venv
 ```
 
-Activate the environment and install dependencies:
+Activate the environment and install the Python package:
 
 ```powershell
 # Windows PowerShell
 .\.venv\Scripts\Activate.ps1
-pip install -e .
+python -m pip install -e .
 ```
 
 ```bash
-# macOS / Linux
+# macOS or Linux
 source .venv/bin/activate
-pip install -e .
+python -m pip install -e .
 ```
 
-Run the deterministic end-to-end demo:
+Start the production-style demo:
+
+```bash
+python scripts/start_demo.py
+```
+
+Open `http://127.0.0.1:8080`. The launcher installs missing frontend packages, builds the React application, and starts the Go server with deterministic model responses so the complete workflow is reproducible.
+
+For configured hosted-model execution, complete the settings in `.env.example` and run:
+
+```bash
+python scripts/start_demo.py --live-models
+```
+
+### Command Line
+
+Run a standalone review:
 
 ```bash
 clauseguard analyze examples/demo_contract.txt --mock-models --output-dir analysis_outputs/demo
 ```
 
-The command writes:
-
-```text
-analysis_outputs/demo/analysis_report.md
-analysis_outputs/demo/analysis_report.json
-```
-
-See [the sample analysis report](examples/sample_report.md) for the expected review format.
-
-## Model Roles
-
-For hosted-model execution, create `.env` from `.env.example` and complete the documented runtime configuration.
-
-Run the full cloud-backed workflow:
+Compare two contract versions:
 
 ```bash
-clauseguard analyze path/to/contract.docx --output-dir analysis_outputs/contract_review
+clauseguard compare path/to/original.txt path/to/modified.txt --output-dir analysis_outputs/comparison
 ```
 
-Default model roles are intentionally separated by task:
-
-| Role | Default endpoint | Purpose |
-|---|---|---|
-| Extraction | `openai/gpt-oss-20b` | Document classification and structured extraction |
-| Reasoning and rewriting | `qwen/qwen3.6-27b` | Legal issue review, explanations, and revised clauses |
-| Verification | `openai/gpt-oss-120b` | Independent second-model assessment |
-| Retrieval | `local-hash-lexical` | Deterministic feature-hashed lexical evidence ranking |
-
-Model roles are configurable through environment variables. Inspect the active configuration with:
-
-```bash
-clauseguard models
-```
-
-## Analysis Modes
-
-### Standalone Contract Review
-
-Reviews one document and generates evidence-backed findings and rewrites:
-
-```bash
-clauseguard analyze path/to/contract.pdf
-```
-
-### Original-vs-Modified Comparison
-
-Matches clauses between two document versions and reports changed, added, and removed clauses plus removed safeguards and newly introduced risk signals:
-
-```bash
-clauseguard compare path/to/original.txt path/to/modified.txt
-```
-
-Comparison is deliberately separate from standalone analysis. Original-document text is not supplied to the detection pipeline when calculating precision, recall, or F1, preventing paired-document leakage from inflating benchmark results.
-
-### Benchmark Evaluation
-
-Runs labeled evaluation and produces aggregate, per-case, and per-issue metrics with error analysis:
+Reproduce the bundled evaluation:
 
 ```bash
 clauseguard evaluate benchmarks/repo_dataset_benchmark.jsonl --mock-models
 ```
 
-Rebuild the benchmark manifest from the repository dataset with:
+The CLI emits human-readable progress by default and supports a versioned JSONL event stream for process integrations. See the [sample report](examples/sample_report.md) for the Markdown output.
 
-```bash
-clauseguard build-dataset-benchmark
-```
+## Model Orchestration
 
-## Evaluation
+Model access is centralized behind `ModelRouter`; agents never call a provider directly.
 
-The repository contains two reproducible benchmark suites:
-
-| Benchmark | Cases | Expected labels | Precision | Recall | F1 |
-|---|---:|---:|---:|---:|---:|
-| Seed contracts | 3 | 10 | `1.0000` | `1.0000` | `1.0000` |
-| Repo perturbation dataset | 11 | 19 | `1.0000` | `0.9474` | `0.9730` |
-
-The repo benchmark result corresponds to `18` true positives, `0` false positives, and `1` false negative:
-
-```text
-precision = TP / (TP + FP) = 18 / 18 = 1.0000
-recall    = TP / (TP + FN) = 18 / 19 = 0.9474
-F1        = 2PR / (P + R)            = 0.9730
-```
-
-Evaluation is performed at the case-level issue-type boundary. A document either contains an expected issue category or it does not, and duplicate findings do not create additional true positives. The evaluator records findings outside the mapped benchmark taxonomy separately for manual error analysis.
-
-The benchmark builder uses the repository's `31` perturbation records to create labels and trace their source locations. In-text contradictions map to contradiction labels, while placement and hierarchy perturbations map to structural labels. During evaluation, only each modified contract is passed to ClauseGuard. The original contract and perturbation metadata remain evaluation provenance, not model input.
-
-Per-issue metrics, false-positive details, false-negative categories, and model configuration are written to:
-
-```text
-analysis_outputs/benchmark_evaluation/benchmark_evaluation.md
-analysis_outputs/benchmark_evaluation/benchmark_evaluation.json
-```
-
-## Engineering Decisions
-
-| Decision | Rationale |
+| Role | Purpose |
 |---|---|
-| Hybrid rules and LLM reasoning | Deterministic checks provide precision and traceability; model reasoning improves explanations and contextual review. |
-| Separate verifier model | A second model can challenge confidence instead of allowing one generation to validate itself. |
-| Local retrieval | Evidence lookup remains deterministic, inspectable, and independent of a hosted vector database. |
-| Structured Pydantic schemas | Agent boundaries fail early on malformed state and preserve a stable reporting contract. |
-| Weighted acceptance layer | Findings are accepted from combined evidence, not raw model confidence alone. |
-| Standalone benchmark isolation | Original/modified pairs support labeling and comparison but cannot leak into detection metrics. |
-| Deterministic evaluation mode | Tests, demos, and benchmark regressions remain reproducible across runs. |
-| Provider abstraction | Centralized routing standardizes model configuration, structured responses, and failure handling. |
+| Structured extraction | Contract classification, clause parsing, and JSON normalization |
+| Primary reasoning | Contextual risk explanation and rewrite drafting |
+| Independent verification | Separate review of each candidate finding |
+| Local retrieval | Deterministic evidence ranking without a hosted vector database |
 
-## Reliability and Validation
+Each hosted role has a per-run request cap and input-token cap. Configuration errors, exhausted caps, quota responses, malformed structured output, and provider failures surface as explicit application errors rather than silent fallbacks.
 
-- Deterministic preprocessing preserves full-document clauses when model extraction is partial.
-- PDF ingestion collapses repeated full-document text layers before clause extraction.
-- Structured response parsing handles fenced or malformed model JSON with explicit errors and tested fallbacks.
-- Configuration and hosted-model failures surface as explicit CLI errors.
+## Engineering Quality
 
-Run the complete local validation suite:
+| Layer | Current quality signal |
+|---|---|
+| Python engine | 83 tests; `84.32%` branch-aware coverage; Black, isort, Flake8, and mypy |
+| Go control plane | 56 test functions; `71.0%` statement coverage; vet and build; CI race-detector job |
+| React workbench | 31 component/integration tests; `81.37%` statement and `70.86%` branch coverage |
+| Production browser flow | 4 Playwright executions across desktop and mobile viewports |
+| Security automation | Python, npm, and Go dependency audits; CodeQL for Python, Go, and TypeScript; Dependabot |
+
+The browser journeys build the production bundle, launch the real Go server, invoke the Python engine, upload contracts, observe SSE progress, inspect reports, and cover both analysis and comparison workflows.
+
+Run the local quality gates:
 
 ```bash
-python -m pytest -q
-python -m compileall -q clauseguard
+python -m pytest --cov=clauseguard --cov-branch
 python -m mypy clauseguard
 python -m flake8 clauseguard tests scripts
-python scripts/check_publish_ready.py
+
+cd apps/server && go test -race ./... && go vet ./...
+cd ../web && npm run lint && npm run test:coverage && npm run test:e2e
 ```
 
-Verified status:
+## Security and Failure Handling
 
-- `54` automated tests pass with `83%` branch-aware coverage.
-- Packaging, compilation, linting, static typing, and the console entrypoint are validated in CI.
-- A dedicated provider smoke harness validates extraction, reasoning, and verifier roles when credentials are configured.
-- End-to-end analysis produces valid Markdown and JSON for the demo contract and additional bundled agreements.
-- Both benchmark suites produce repeatable aggregate, per-case, and per-issue results.
+- Uploads are isolated by job and restricted by extension and size.
+- Document parsing bounds source bytes, DOCX expansion and entry count, PDF pages, and extracted text.
+- Hosted prompts mark document content as untrusted data to reduce instruction-injection risk.
+- API responses use `no-store`; the web application applies CSP, same-origin resource policy, frame protection, and restrictive browser permissions.
+- The server binds to loopback by default and enforces queue, concurrency, process-output, and timeout limits.
+- Interrupted jobs are recovered into a terminal state instead of remaining indefinitely active.
 
-## Project Structure
+See [Security Policy](SECURITY.md) for deployment boundaries and vulnerability reporting.
+
+## Repository Map
 
 ```text
+apps/
+  server/                  Go API, job manager, SQLite store, Python bridge
+  web/                     React workbench, component tests, Playwright journeys
 clauseguard/
-  agents/              # preprocessing, compliance, verification, rewriting
-  cli.py               # analyze, compare, evaluate, models commands
-  comparison.py        # isolated original-vs-modified analysis
-  config.py            # runtime and model configuration
-  context.py           # normalized shared agent state
-  dataset_benchmark.py # dataset-to-benchmark builder
-  document.py          # TXT, DOCX, and PDF loading
-  evaluation.py        # precision, recall, F1, and error analysis
-  model_router.py      # provider routing and structured responses
-  pipeline.py          # end-to-end orchestration
-  rag.py               # local evidence retrieval
-  schemas.py           # Pydantic contracts
-  scoring.py           # weighted acceptance logic
-
-benchmarks/            # labeled seed and repository-derived benchmark cases
-data/                  # source contracts, perturbations, and provenance notes
-docs/                  # architecture and dataset documentation
-examples/              # runnable contract and generated report
-scripts/               # provider smoke test and publish-readiness checks
-tests/                 # unit, integration, and regression tests
-.github/workflows/     # automated quality gate
+  agents/                  preprocessing, compliance, verification, rewriting
+  cli.py                   analysis, comparison, evaluation, and protocol commands
+  comparison.py            isolated original-versus-modified inspection
+  context.py               normalized shared analysis state
+  dataset_benchmark.py     dataset-to-benchmark builder
+  document.py              bounded TXT, DOCX, and PDF ingestion
+  evaluation.py            precision, recall, F1, and error analysis
+  model_router.py          role routing, caps, and structured responses
+  pipeline.py              end-to-end orchestration
+  rag.py                   local evidence retrieval
+  schemas.py               Pydantic contracts
+  scoring.py               weighted acceptance logic
+benchmarks/                versioned regression manifests
+data/                      selected contract perturbations and provenance
+docs/                      architecture and dataset documentation
+examples/                  runnable contract and sample report
+scripts/                   demo launcher, smoke checks, publish validation
+tests/                     Python unit, integration, and regression tests
 ```
 
 ## Responsible Use
 
-ClauseGuard is a decision-support system for contract review. Its findings depend on the supplied document, the configured reference corpus, deterministic rules, and model behavior. Reports should be reviewed by a qualified legal professional before they influence negotiations, compliance decisions, or legal obligations.
+ClauseGuard is a contract-review decision-support system. Its reports are designed for inspection by a human reviewer and should be validated by a qualified legal professional before they influence negotiations, compliance decisions, or legal obligations.
 
 ## License
 
-The source code is available under the [MIT License](LICENSE). Contract-derived benchmark files retain their underlying source considerations; review the dataset inventory and source terms before redistributing those materials independently.
+ClauseGuard source code is released under the [MIT License](LICENSE). Bundled contract and perturbation artifacts retain their upstream terms; see [data/NOTICE.md](data/NOTICE.md) before redistributing dataset files.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -13,6 +15,8 @@ REQUIRED_FILES = [
     ".env.example",
     ".gitignore",
     ".github/workflows/ci.yml",
+    ".github/workflows/codeql.yml",
+    ".github/dependabot.yml",
     "pyproject.toml",
     "requirements.txt",
     "clauseguard/__init__.py",
@@ -20,9 +24,14 @@ REQUIRED_FILES = [
     "clauseguard/pipeline.py",
     "docs/ARCHITECTURE.md",
     "docs/DATASET_INVENTORY.md",
+    "docs/workbench.png",
     "data/README.md",
+    "data/NOTICE.md",
+    "apps/server/go.mod",
+    "apps/web/package.json",
     "examples/demo_contract.txt",
     "examples/sample_report.md",
+    "scripts/start_demo.py",
 ]
 
 IGNORED_DIRS = {
@@ -38,13 +47,23 @@ IGNORED_DIRS = {
     "env",
     "analysis_outputs",
     "test_outputs",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "htmlcov",
+    "playwright-report",
+    "test-results",
 }
 
 SECRET_PATTERNS = [
     re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),
     re.compile(r"gsk_[0-9A-Za-z_\-]{20,}"),
+    re.compile(r"gh[pousr]_[0-9A-Za-z]{36,255}"),
     re.compile(r"sk-[0-9A-Za-z_\-]{20,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"eyJ[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}"),
+    re.compile(r"-----BEGIN (?:EC |OPENSSH |RSA )?PRIVATE KEY-----"),
 ]
 
 BRANDING_PATHS = [
@@ -75,6 +94,14 @@ DEPRECATED_PUBLIC_PATHS = (
     "docs/RESUME_SUMMARY.md",
 )
 
+MAINTAINED_SOURCE_ROOTS = (
+    "clauseguard",
+    "apps/server",
+    "apps/web/src",
+    "scripts",
+    "tests",
+)
+
 
 def main() -> int:
     failures: list[str] = []
@@ -91,6 +118,7 @@ def main() -> int:
 
     secret_hits = scan_for_secrets()
     failures.extend(secret_hits)
+    failures.extend(scan_for_unpublished_source_files())
 
     failures.extend(scan_for_stale_branding())
     if (ROOT / ("legal" + "_lm")).exists():
@@ -134,13 +162,10 @@ def main() -> int:
     return 1
 
 
-def scan_for_secrets() -> list[str]:
+def scan_for_secrets(root: Path = ROOT) -> list[str]:
     hits: list[str] = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in IGNORED_DIRS for part in path.relative_to(ROOT).parts):
-            continue
+    for path in scannable_files(root):
+        relative = path.relative_to(root)
         if path.name == ".env":
             continue
         try:
@@ -149,9 +174,67 @@ def scan_for_secrets() -> list[str]:
             continue
         for pattern in SECRET_PATTERNS:
             if pattern.search(text):
-                hits.append(f"Possible secret in {path.relative_to(ROOT)}")
+                hits.append(f"Possible secret in {relative}")
                 break
     return hits
+
+
+def scannable_files(root: Path):
+    for current, directories, filenames in os.walk(root):
+        directories[:] = [name for name in directories if not ignored_directory_name(name)]
+        current_path = Path(current)
+        for filename in filenames:
+            yield current_path / filename
+
+
+def ignored_directory_name(name: str) -> bool:
+    return (
+        name in IGNORED_DIRS
+        or name.startswith(".runtime-")
+        or name.startswith(".clauseguard")
+        or name.endswith(".egg-info")
+    )
+
+
+def scan_for_unpublished_source_files(root: Path = ROOT) -> list[str]:
+    if not (root / ".git").exists():
+        return []
+
+    failures: list[str] = []
+    commands = (
+        ("Untracked maintained source file", ["--others", "--exclude-standard"]),
+        (
+            "Ignored maintained source file",
+            ["--others", "--ignored", "--exclude-standard"],
+        ),
+    )
+    for label, arguments in commands:
+        try:
+            completed = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    f"safe.directory={root.as_posix()}",
+                    "ls-files",
+                    *arguments,
+                    "--",
+                    *MAINTAINED_SOURCE_ROOTS,
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError as exc:
+            return [f"Could not inspect Git source tracking: {exc}"]
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or "git ls-files failed"
+            return [f"Could not inspect Git source tracking: {detail}"]
+        for value in completed.stdout.splitlines():
+            relative = Path(value.strip())
+            if value.strip() and not any(ignored_directory_name(part) for part in relative.parts):
+                failures.append(f"{label}: {relative.as_posix()}")
+    return sorted(failures)
 
 
 def scan_for_stale_branding() -> list[str]:

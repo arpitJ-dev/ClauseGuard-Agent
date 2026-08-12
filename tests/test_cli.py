@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from clauseguard.cli import main
+from clauseguard.cli import SCHEMA_MODELS, main
 from clauseguard.exit_codes import ExitCode
 
 
@@ -212,6 +212,21 @@ def test_schema_command_exports_versioned_contract(
     assert exit_code == ExitCode.SUCCESS
     assert schema["title"] == expected_title
     assert schema["properties"]["schema_version"]["const"] == "1.0"
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "filename"),
+    [
+        ("analysis-report", "analysis-report-v1.schema.json"),
+        ("comparison-report", "comparison-report-v1.schema.json"),
+        ("progress-event", "progress-event-v1.schema.json"),
+    ],
+)
+def test_committed_json_schema_matches_runtime_contract(schema_name: str, filename: str):
+    schema_path = Path(__file__).resolve().parents[1] / "contracts" / "schemas" / filename
+    committed = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    assert committed == SCHEMA_MODELS[schema_name].model_json_schema()
 
 
 def test_evaluate_command_runs_local_benchmark(tmp_path: Path, capsys):

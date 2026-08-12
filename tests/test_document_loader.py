@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
@@ -43,6 +44,72 @@ def test_rejects_empty_text_document(tmp_path: Path):
 
     with pytest.raises(DocumentLoadError, match="No extractable text"):
         DocumentLoader().load(document_path)
+
+
+def test_rejects_file_above_configured_safety_limit(tmp_path: Path):
+    document_path = tmp_path / "large.txt"
+    document_path.write_text("SERVICE AGREEMENT", encoding="utf-8")
+    loader = DocumentLoader()
+    loader.max_file_bytes = 5
+
+    with pytest.raises(DocumentLoadError, match="exceeds the .* safety limit"):
+        loader.load(document_path)
+
+
+def test_rejects_docx_with_excessive_expanded_content(tmp_path: Path):
+    document_path = tmp_path / "expanded.docx"
+    with ZipFile(document_path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "x" * 100)
+        archive.writestr("word/document.xml", "y" * 2_000)
+    loader = DocumentLoader()
+    loader.max_docx_expanded_bytes = 512
+
+    with pytest.raises(DocumentLoadError, match="expanded content exceeds"):
+        loader.load(document_path)
+
+
+def test_rejects_docx_with_excessive_entry_count(tmp_path: Path):
+    document_path = tmp_path / "many-entries.docx"
+    with ZipFile(document_path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "content-types")
+        archive.writestr("word/document.xml", "document")
+    loader = DocumentLoader()
+    loader.max_docx_entries = 1
+
+    with pytest.raises(DocumentLoadError, match="entry safety limit"):
+        loader.load(document_path)
+
+
+def test_rejects_extracted_text_above_safety_limit(tmp_path: Path):
+    document_path = tmp_path / "long.txt"
+    document_path.write_text("SERVICE AGREEMENT", encoding="utf-8")
+    loader = DocumentLoader()
+    loader.max_extracted_characters = 5
+
+    with pytest.raises(DocumentLoadError, match="extracted-text safety limit"):
+        loader.load(document_path)
+
+
+def test_rejects_pdf_above_page_safety_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    class FakeReader:
+        is_encrypted = False
+        pages = [SimpleNamespace(extract_text=lambda: "page")] * 3
+
+        def __init__(self, _handle):
+            pass
+
+    monkeypatch.setattr(
+        document_module.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(PdfReader=FakeReader),
+    )
+    document_path = tmp_path / "many-pages.pdf"
+    document_path.write_bytes(b"%PDF-test")
+    loader = DocumentLoader()
+    loader.max_pdf_pages = 2
+
+    with pytest.raises(DocumentLoadError, match="page count exceeds"):
+        loader.load(document_path)
 
 
 def test_collapses_repeated_full_document_pdf_text_layers(

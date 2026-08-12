@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -21,7 +22,12 @@ import (
 	"github.com/arpitJ-dev/ClauseGuard-Agent/apps/server/internal/store"
 )
 
-const healthTimeout = 5 * time.Second
+const (
+	healthTimeout              = 5 * time.Second
+	multipartOverheadAllowance = int64(1 << 20)
+)
+
+var errUploadTooLarge = errors.New("uploaded file exceeds the configured size limit")
 
 var allowedExtensions = map[string]struct{}{
 	".docx": {},
@@ -175,7 +181,11 @@ func (server *Server) createJob(
 		}
 	}()
 
-	request.Body = http.MaxBytesReader(writer, request.Body, server.maxUploadBytes)
+	request.Body = http.MaxBytesReader(
+		writer,
+		request.Body,
+		multipartRequestLimit(server.maxUploadBytes, len(fields)),
+	)
 	reader, err := request.MultipartReader()
 	if err != nil {
 		writeError(writer, http.StatusUnsupportedMediaType, "multipart_required", "Use multipart/form-data for document uploads.")
@@ -251,7 +261,11 @@ func (server *Server) readUploads(
 			_ = part.Close()
 			return nil, fmt.Errorf("create uploaded file: %w", err)
 		}
-		bytesWritten, copyError := io.Copy(file, part)
+		copyLimit := server.maxUploadBytes
+		if copyLimit < math.MaxInt64 {
+			copyLimit++
+		}
+		bytesWritten, copyError := io.Copy(file, io.LimitReader(part, copyLimit))
 		closeError := file.Close()
 		_ = part.Close()
 		if copyError != nil {
@@ -259,6 +273,9 @@ func (server *Server) readUploads(
 		}
 		if closeError != nil {
 			return nil, fmt.Errorf("close uploaded file: %w", closeError)
+		}
+		if bytesWritten > server.maxUploadBytes {
+			return nil, fmt.Errorf("%w: %q", errUploadTooLarge, field)
 		}
 		if bytesWritten == 0 {
 			return nil, fmt.Errorf("uploaded file %q is empty", field)
@@ -427,8 +444,14 @@ func (server *Server) middleware(next http.Handler) http.Handler {
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		writer.Header().Set("Referrer-Policy", "no-referrer")
 		writer.Header().Set("X-Frame-Options", "DENY")
-		writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		writer.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		writer.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		writer.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+		writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		writer.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if strings.HasPrefix(request.URL.Path, "/api/") {
+			writer.Header().Set("Cache-Control", "no-store")
+		}
 		origin := strings.TrimSpace(request.Header.Get("Origin"))
 		if origin != "" {
 			if !server.originAllowed(request, origin) {
@@ -466,7 +489,7 @@ func (server *Server) originAllowed(request *http.Request, origin string) bool {
 
 func (server *Server) writeUploadError(writer http.ResponseWriter, err error) {
 	var maxBytesError *http.MaxBytesError
-	if errors.As(err, &maxBytesError) {
+	if errors.As(err, &maxBytesError) || errors.Is(err, errUploadTooLarge) {
 		writeError(writer, http.StatusRequestEntityTooLarge, "upload_too_large", "The upload exceeds the configured size limit.")
 		return
 	}
@@ -480,6 +503,17 @@ func (server *Server) writeUploadError(writer http.ResponseWriter, err error) {
 		return
 	}
 	writeError(writer, http.StatusBadRequest, "invalid_upload", message)
+}
+
+func multipartRequestLimit(perFileLimit int64, fieldCount int) int64 {
+	count := int64(fieldCount)
+	if count < 1 {
+		count = 1
+	}
+	if perFileLimit > (math.MaxInt64-multipartOverheadAllowance)/count {
+		return math.MaxInt64
+	}
+	return perFileLimit*count + multipartOverheadAllowance
 }
 
 func (server *Server) writeServiceError(writer http.ResponseWriter, err error) {

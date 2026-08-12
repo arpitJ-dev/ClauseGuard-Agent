@@ -28,7 +28,9 @@ test.afterEach(async ({ page }) => {
 test("analyzes a contract and exposes an explainable report", async ({ page }) => {
   const response = await page.request.get("/");
   expect(response.headers()["content-security-policy"]).toContain("default-src 'self'");
+  expect(response.headers()["content-security-policy"]).toContain("object-src 'none'");
   expect(response.headers()["permissions-policy"]).toContain("camera=()");
+  expect(response.headers()["cross-origin-resource-policy"]).toBe("same-origin");
 
   await page
     .getByLabel("Contract", { exact: true })
@@ -45,6 +47,15 @@ test("analyzes a contract and exposes an explainable report", async ({ page }) =
   await page.getByRole("button", { name: "Audit" }).click();
   await expect(page.getByRole("heading", { name: "Analysis record" })).toBeVisible();
   await expect(page.getByText("Review limitations")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Engine ready")).toBeAttached();
+  await openIntake(page);
+  await page
+    .getByRole("button", { name: /modified\.txt\s+Analysis/i })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { name: "SERVICE AGREEMENT" })).toBeVisible();
 });
 
 test("compares contract versions and identifies clause deltas", async ({ page }) => {

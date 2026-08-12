@@ -44,3 +44,4 @@ clauseguard evaluate benchmarks/repo_dataset_benchmark.jsonl --mock-models
 
 Results include Markdown and JSON summaries plus the full analysis report for
 every case. See `data/README.md` for dataset layout, provenance, and usage notes.
+The upstream attribution and redistribution notice is in `data/NOTICE.md`.

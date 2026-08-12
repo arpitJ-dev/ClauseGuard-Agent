@@ -27,6 +27,8 @@ jobs:
         run: python -m flake8 clauseguard tests scripts
       - name: Type check
         run: python -m mypy clauseguard
+      - name: Audit runtime dependencies
+        run: python -m pip_audit . --progress-spinner off
       - name: Test
         run: python -m pytest --cov=clauseguard --cov-report=term-missing --cov-fail-under=80
 
@@ -43,6 +45,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run test:coverage
       - run: npm run build
@@ -69,6 +72,10 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
+      - name: Audit dependencies
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          govulncheck ./...
       - name: Test control plane and Python bridge
         env:
           CLAUSEGUARD_INTEGRATION_PYTHON: python

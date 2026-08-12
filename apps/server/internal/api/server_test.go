@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -120,6 +121,29 @@ func TestComparisonUploadPreservesSemanticOrder(t *testing.T) {
 	}
 	if service.submitted.Inputs[0].Name != "old.txt" || service.submitted.Inputs[1].Name != "new.txt" {
 		t.Fatalf("comparison order changed: %+v", service.submitted.Inputs)
+	}
+}
+
+func TestUploadLimitAppliesPerDocumentInsteadOfMultipartEnvelope(t *testing.T) {
+	const perFileLimit = int64(16)
+	service := &stubService{health: domain.Health{Ready: true}}
+	handler := testHandler(t, service, t.TempDir(), perFileLimit)
+	request := multipartRequest(t, "/api/v1/comparisons", map[string]upload{
+		"original": {name: "old.txt", content: strings.Repeat("o", int(perFileLimit))},
+		"modified": {name: "new.txt", content: strings.Repeat("n", int(perFileLimit))},
+	})
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("two valid files were rejected by the multipart envelope: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMultipartRequestLimitSaturatesWithoutOverflow(t *testing.T) {
+	if got := multipartRequestLimit(math.MaxInt64, 2); got != math.MaxInt64 {
+		t.Fatalf("multipart request limit overflowed: %d", got)
 	}
 }
 
@@ -313,6 +337,28 @@ func TestCrossOriginRequestIsRejected(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "origin_not_allowed") {
 		t.Fatalf("cross-origin request was not rejected: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestAPIResponsesArePrivateAndBrowserHeadersArePresent(t *testing.T) {
+	service := &stubService{health: domain.Health{Ready: true}}
+	handler := testHandler(t, service, t.TempDir(), 1<<20)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+
+	if recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("API response was cacheable: %+v", recorder.Header())
+	}
+	for _, header := range []string{
+		"Content-Security-Policy",
+		"Cross-Origin-Opener-Policy",
+		"Cross-Origin-Resource-Policy",
+		"Permissions-Policy",
+		"X-Content-Type-Options",
+	} {
+		if recorder.Header().Get(header) == "" {
+			t.Fatalf("API response omitted %s", header)
+		}
 	}
 }
 

@@ -282,8 +282,8 @@ export function AnalysisReportView({ report, onDownload }: AnalysisReportViewPro
           <section>
             <div className="content-toolbar"><h2>Suggested rewrites</h2></div>
             <div className="rewrite-list">
-              {report.rewrites.map((rewrite) => (
-                <article key={rewrite.clause_id} className="rewrite-card">
+              {report.rewrites.map((rewrite, index) => (
+                <article key={`${rewrite.clause_id}-${index}`} className="rewrite-card">
                   <div className="rewrite-heading">
                     <WandSparkles size={17} />
                     <h3>{report.clauses.find((clause) => clause.id === rewrite.clause_id)?.title ?? rewrite.clause_id}</h3>

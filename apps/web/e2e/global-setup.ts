@@ -42,21 +42,26 @@ function waitForExit(process: ChildProcess, timeoutMs: number): Promise<boolean>
 
 async function waitForHealth(process: ChildProcess): Promise<void> {
   const deadline = Date.now() + 60_000;
+  let lastResult = "no response";
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`ClauseGuard server exited during startup (${process.exitCode}).`);
     }
     try {
-      const response = await fetch(healthURL, { signal: AbortSignal.timeout(1_000) });
+      const response = await fetch(healthURL, { signal: AbortSignal.timeout(6_000) });
       if (response.ok) {
         return;
       }
-    } catch {
+      lastResult = `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`;
+    } catch (error) {
       // The socket is expected to reject connections until the server is ready.
+      lastResult = error instanceof Error ? error.message : String(error);
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 200));
   }
-  throw new Error(`ClauseGuard server did not become healthy at ${healthURL}.`);
+  throw new Error(
+    `ClauseGuard server did not become healthy at ${healthURL}. Last result: ${lastResult}`,
+  );
 }
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
