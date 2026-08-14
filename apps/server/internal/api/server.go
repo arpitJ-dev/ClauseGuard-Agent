@@ -1,11 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -29,12 +31,6 @@ const (
 
 var errUploadTooLarge = errors.New("uploaded file exceeds the configured size limit")
 
-var allowedExtensions = map[string]struct{}{
-	".docx": {},
-	".pdf":  {},
-	".txt":  {},
-}
-
 var jobIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type JobService interface {
@@ -57,9 +53,15 @@ type Config struct {
 type Server struct {
 	service        JobService
 	dataDir        string
-	webDir         string
+	webAssets      map[string]webAsset
 	maxUploadBytes int64
 	allowedOrigin  string
+}
+
+type webAsset struct {
+	name     string
+	contents []byte
+	modified time.Time
 }
 
 type errorPayload struct {
@@ -83,21 +85,25 @@ func New(service JobService, config Config) (http.Handler, error) {
 		return nil, fmt.Errorf("resolve API data directory: %w", err)
 	}
 	webDir := strings.TrimSpace(config.WebDir)
+	var webAssets map[string]webAsset
 	if webDir != "" {
 		webDir, err = filepath.Abs(webDir)
 		if err != nil {
 			return nil, fmt.Errorf("resolve web directory: %w", err)
 		}
-		indexPath := filepath.Join(webDir, "index.html")
-		indexInfo, statErr := os.Stat(indexPath)
-		if statErr != nil || indexInfo.IsDir() {
-			return nil, fmt.Errorf("web bundle not found at %s; run the frontend build first", indexPath)
+		webAssets, err = loadWebBundle(webDir)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"web bundle not found at %s; run the frontend build first: %w",
+				filepath.Join(webDir, "index.html"),
+				err,
+			)
 		}
 	}
 	server := &Server{
 		service:        service,
 		dataDir:        dataDir,
-		webDir:         webDir,
+		webAssets:      webAssets,
 		maxUploadBytes: config.MaxUploadBytes,
 		allowedOrigin:  strings.TrimSpace(config.AllowedOrigin),
 	}
@@ -116,7 +122,7 @@ func New(service JobService, config Config) (http.Handler, error) {
 }
 
 func (server *Server) handleWeb(writer http.ResponseWriter, request *http.Request) {
-	if strings.HasPrefix(request.URL.Path, "/api/") || server.webDir == "" {
+	if strings.HasPrefix(request.URL.Path, "/api/") || server.webAssets == nil {
 		writeError(writer, http.StatusNotFound, "route_not_found", "The requested route does not exist.")
 		return
 	}
@@ -126,26 +132,21 @@ func (server *Server) handleWeb(writer http.ResponseWriter, request *http.Reques
 	}
 
 	cleaned := path.Clean("/" + request.URL.Path)
-	if cleaned != "/" {
-		relative := strings.TrimPrefix(cleaned, "/")
-		target := filepath.Join(server.webDir, filepath.FromSlash(relative))
-		if within(server.webDir, target) {
-			if info, err := os.Stat(target); err == nil && !info.IsDir() {
-				if strings.HasPrefix(cleaned, "/assets/") {
-					writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				}
-				http.ServeFile(writer, request, target)
-				return
-			}
-		}
-		if filepath.Ext(cleaned) != "" {
+	asset, found := server.webAssets[cleaned]
+	if !found {
+		if path.Ext(cleaned) != "" {
 			http.NotFound(writer, request)
 			return
 		}
+		asset = server.webAssets["/index.html"]
 	}
 
-	writer.Header().Set("Cache-Control", "no-cache")
-	http.ServeFile(writer, request, filepath.Join(server.webDir, "index.html"))
+	if found && strings.HasPrefix(cleaned, "/assets/") {
+		writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if asset.name == "index.html" {
+		writer.Header().Set("Cache-Control", "no-cache")
+	}
+	http.ServeContent(writer, request, asset.name, asset.modified, bytes.NewReader(asset.contents))
 }
 
 func (server *Server) handleAnalysis(writer http.ResponseWriter, request *http.Request) {
@@ -251,11 +252,12 @@ func (server *Server) readUploads(
 		}
 
 		extension := strings.ToLower(filepath.Ext(filename))
-		if _, allowed := allowedExtensions[extension]; !allowed {
+		storageName, allowed := uploadStorageName(field, extension)
+		if !allowed {
 			_ = part.Close()
 			return nil, fmt.Errorf("unsupported file type %q", extension)
 		}
-		destination := filepath.Join(inputDir, field+extension)
+		destination := filepath.Join(inputDir, storageName)
 		file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 		if err != nil {
 			_ = part.Close()
@@ -561,6 +563,68 @@ func displayName(name string) string {
 		name = string(runes[:255])
 	}
 	return name
+}
+
+func uploadStorageName(field, extension string) (string, bool) {
+	switch field + "\x00" + extension {
+	case "document\x00.docx":
+		return "document.docx", true
+	case "document\x00.pdf":
+		return "document.pdf", true
+	case "document\x00.txt":
+		return "document.txt", true
+	case "original\x00.docx":
+		return "original.docx", true
+	case "original\x00.pdf":
+		return "original.pdf", true
+	case "original\x00.txt":
+		return "original.txt", true
+	case "modified\x00.docx":
+		return "modified.docx", true
+	case "modified\x00.pdf":
+		return "modified.pdf", true
+	case "modified\x00.txt":
+		return "modified.txt", true
+	default:
+		return "", false
+	}
+}
+
+func loadWebBundle(webDir string) (map[string]webAsset, error) {
+	root := os.DirFS(webDir)
+	assets := make(map[string]webAsset)
+	err := fs.WalkDir(root, ".", func(name string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if name == "." || entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("web bundle contains symbolic link %q", name)
+		}
+		contents, err := fs.ReadFile(root, name)
+		if err != nil {
+			return fmt.Errorf("read web asset %q: %w", name, err)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect web asset %q: %w", name, err)
+		}
+		assets["/"+path.Clean(name)] = webAsset{
+			name:     path.Base(name),
+			contents: contents,
+			modified: info.ModTime(),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load web bundle: %w", err)
+	}
+	if _, exists := assets["/index.html"]; !exists {
+		return nil, errors.New("index.html is missing")
+	}
+	return assets, nil
 }
 
 func within(root, target string) bool {

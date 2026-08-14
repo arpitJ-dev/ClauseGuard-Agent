@@ -3,7 +3,7 @@
 [![CI](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/codeql.yml/badge.svg)](https://github.com/arpitJ-dev/ClauseGuard-Agent/actions/workflows/codeql.yml)
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![React 19](https://img.shields.io/badge/React-19-20232A?logo=react&logoColor=61DAFB)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -115,7 +115,7 @@ Per-case errors, per-issue metrics, unmatched findings, and provenance are writt
 ### Prerequisites
 
 - Python 3.11+
-- Go 1.25+
+- Go 1.26.6+
 - Node.js 22+
 
 ### Browser Workbench

@@ -106,6 +106,48 @@ func TestAnalysisUploadIsContainedAndPathIsPrivate(t *testing.T) {
 	}
 }
 
+func TestUploadClientFilenameCannotInfluenceStoragePath(t *testing.T) {
+	dataDir := t.TempDir()
+	service := &stubService{health: domain.Health{Ready: true}}
+	handler := testHandler(t, service, dataDir, 1<<20)
+	request := multipartRequest(t, "/api/v1/analyses", map[string]upload{
+		"document": {name: "../../outside.txt", content: "SERVICE AGREEMENT"},
+	})
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("unexpected status %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if len(service.submitted.Inputs) != 1 {
+		t.Fatalf("unexpected submitted spec: %+v", service.submitted)
+	}
+	input := service.submitted.Inputs[0]
+	if filepath.Base(input.Path) != "document.txt" || !within(dataDir, input.Path) {
+		t.Fatalf("client filename influenced storage path: %+v", input)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "outside.txt")); !os.IsNotExist(err) {
+		t.Fatalf("upload escaped managed storage: %v", err)
+	}
+}
+
+func TestUploadRejectsPathLikeMultipartField(t *testing.T) {
+	dataDir := t.TempDir()
+	service := &stubService{health: domain.Health{Ready: true}}
+	handler := testHandler(t, service, dataDir, 1<<20)
+	request := multipartRequest(t, "/api/v1/analyses", map[string]upload{
+		"../document": {name: "contract.txt", content: "SERVICE AGREEMENT"},
+	})
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "invalid_upload") {
+		t.Fatalf("path-like multipart field returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestComparisonUploadPreservesSemanticOrder(t *testing.T) {
 	dataDir := t.TempDir()
 	service := &stubService{health: domain.Health{Ready: true}}
@@ -432,6 +474,45 @@ func TestWebBundleAndSPARoutesAreServed(t *testing.T) {
 	handler.ServeHTTP(missingAPI, httptest.NewRequest(http.MethodGet, "/api/v1/missing", nil))
 	if missingAPI.Code != http.StatusNotFound || !strings.Contains(missingAPI.Body.String(), "route_not_found") {
 		t.Fatalf("unknown API route returned %d: %s", missingAPI.Code, missingAPI.Body.String())
+	}
+}
+
+func TestWebBundleTraversalRequestsCannotReadOutsideFiles(t *testing.T) {
+	rootDir := t.TempDir()
+	webDir := filepath.Join(rootDir, "web")
+	if err := os.Mkdir(webDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<main>ClauseGuard</main>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "outside-web-root"
+	if err := os.WriteFile(filepath.Join(rootDir, "secret.txt"), []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assets, err := loadWebBundle(webDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{webAssets: assets}
+
+	for _, route := range []string{
+		"/../secret.txt",
+		"/assets/../../secret.txt",
+		"/..\\secret.txt",
+		"//secret.txt",
+	} {
+		t.Run(route, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "http://clauseguard.test/", nil)
+			request.URL.Path = route
+			recorder := httptest.NewRecorder()
+
+			server.handleWeb(recorder, request)
+
+			if recorder.Code == http.StatusOK || strings.Contains(recorder.Body.String(), secret) {
+				t.Fatalf("traversal route %q exposed an outside file: %d %s", route, recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
 
