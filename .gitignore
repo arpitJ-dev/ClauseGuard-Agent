@@ -8,7 +8,6 @@ env/
 
 # Local assistant/editor state
 .agents/
-.codex/
 
 # Vectorstore
 qdrant_storage

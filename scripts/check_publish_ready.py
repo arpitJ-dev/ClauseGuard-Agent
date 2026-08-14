@@ -40,7 +40,6 @@ IGNORED_DIRS = {
     ".pytest_cache",
     ".mypy_cache",
     ".agents",
-    ".codex",
     "__pycache__",
     "venv",
     ".venv",
