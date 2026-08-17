@@ -9,28 +9,39 @@ audited independently.
 
 ```mermaid
 flowchart LR
-    A["Contract input"] --> B["DocumentLoader"]
-    B --> C["PreprocessorAgent"]
-    C --> D["ContextBank"]
-    D --> E["KnowledgeAgent"]
-    D --> F["ComplianceCheckerAgent"]
-    E --> F
-    F --> G["Issue-specific evidence retrieval"]
-    G --> H["VerifierAgent"]
-    H --> I["WeightedScorer"]
-    I --> J["ClauseRewriterAgent"]
-    J --> K["Postprocessor"]
-    K --> L["Markdown and JSON"]
+    A["React review workbench"] -->|"multipart upload + JSON"| B["Go control plane"]
+    B -->|"SSE progress"| A
+    B --> C[("SQLite job state")]
+    B --> D[("Per-job files")]
+    B -->|"versioned JSONL protocol"| E["Python CLI bridge"]
+    E --> F["Document loader"]
+    F --> G["Preprocessor agent"]
+    G --> H["Context bank"]
+    H --> I["Retrieval + compliance"]
+    I --> J["Reasoning + verifier"]
+    J --> K["Weighted decision"]
+    K --> L["Rewriter + postprocessor"]
+    L --> D
 ```
 
 The pipeline operates on one document at a time. Every clause, evidence item,
 candidate, score, and rewrite carries a stable identifier so findings can be
 traced back to source text.
 
+The Go process owns transport, upload isolation, queue capacity, cancellation,
+job persistence, and process timeouts. It invokes the Python engine through a
+versioned JSON-lines event protocol instead of importing Python internals. This
+keeps the UI/API lifecycle independent from analysis implementation details while
+preserving structured progress and error semantics.
+
 ## Component Boundaries
 
 | Component | Module | Contract |
 |---|---|---|
+| Review workbench | `apps/web` | React/TypeScript intake, live progress, reports, evidence, rewrites, comparison, and audit views |
+| HTTP control plane | `apps/server/internal/api` | Validates uploads, exposes job/report/SSE endpoints, serves the production SPA, and applies browser security policy |
+| Job manager and store | `apps/server/internal/jobs`, `apps/server/internal/store` | Enforces queue and timeout limits, persists SQLite state, supports cancellation, and recovers interrupted jobs |
+| CLI process bridge | `apps/server/internal/engine` | Exchanges versioned JSONL events with the Python CLI and validates report paths |
 | Document loader | `clauseguard.document` | Converts TXT, DOCX, or PDF input into normalized text and metadata |
 | Preprocessor | `clauseguard.agents.preprocessor` | Produces document type, ordered clauses, entities, categories, and risk terms |
 | Shared state | `clauseguard.context` | Owns the normalized single-document state used by all stages |
@@ -119,6 +130,8 @@ per-issue, and aggregate error analysis.
 
 - Missing, empty, unsupported, encrypted, or corrupted documents raise a
   `DocumentLoadError` with a user-facing message.
+- File size, archive expansion, archive entry count, PDF page count, and extracted
+  text are bounded before a document can consume unbounded parser resources.
 - Exact long-page duplicates from malformed PDF text layers are collapsed before
   clause extraction, while ordinary repeated short pages remain intact.
 - Invalid configuration fails before the first hosted request.
@@ -131,6 +144,7 @@ per-issue, and aggregate error analysis.
 ## Verification Strategy
 
 The automated quality gate runs formatting, import ordering, linting, static type
-checking, unit/integration tests, branch-aware coverage, CLI smoke tests, and both
-deterministic benchmark suites. Provider smoke tests are isolated from CI so the
-main validation path remains reproducible.
+checking, dependency audits, unit/integration tests, branch-aware coverage, Go
+race detection, and production-stack Playwright journeys on desktop and mobile.
+CodeQL scans Python, Go, and TypeScript. Provider smoke tests remain isolated from
+the reproducible CI path.

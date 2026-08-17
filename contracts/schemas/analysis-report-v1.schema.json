@@ -1,0 +1,421 @@
+{
+  "$defs": {
+    "Clause": {
+      "properties": {
+        "category": {
+          "default": "General",
+          "title": "Category",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "order": {
+          "title": "Order",
+          "type": "integer"
+        },
+        "risk_terms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risk Terms",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "order",
+        "title",
+        "text"
+      ],
+      "title": "Clause",
+      "type": "object"
+    },
+    "ComponentScores": {
+      "properties": {
+        "clause_structure": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Clause Structure",
+          "type": "number"
+        },
+        "deterministic_rules": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Deterministic Rules",
+          "type": "number"
+        },
+        "final": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Final",
+          "type": "number"
+        },
+        "primary_reasoning": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Primary Reasoning",
+          "type": "number"
+        },
+        "rag_evidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Rag Evidence",
+          "type": "number"
+        },
+        "verifier_agreement": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Verifier Agreement",
+          "type": "number"
+        },
+        "weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Weights",
+          "type": "object"
+        }
+      },
+      "required": [
+        "deterministic_rules",
+        "rag_evidence",
+        "primary_reasoning",
+        "verifier_agreement",
+        "clause_structure",
+        "final",
+        "weights"
+      ],
+      "title": "ComponentScores",
+      "type": "object"
+    },
+    "Evidence": {
+      "properties": {
+        "clause_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clause Id"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "relevance": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Relevance",
+          "type": "number"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "title",
+        "text",
+        "relevance"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Finding": {
+      "properties": {
+        "acceptance_threshold": {
+          "default": 0.55,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Acceptance Threshold",
+          "type": "number"
+        },
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "clause_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clause Id"
+        },
+        "clause_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clause Title"
+        },
+        "component_scores": {
+          "$ref": "#/$defs/ComponentScores"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "issue_type": {
+          "title": "Issue Type",
+          "type": "string"
+        },
+        "model_confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Model Confidence",
+          "type": "number"
+        },
+        "rule_id": {
+          "default": "",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "signals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Signals",
+          "type": "array"
+        },
+        "suggested_rewrite": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggested Rewrite"
+        },
+        "verifier_confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Verifier Confidence",
+          "type": "number"
+        },
+        "verifier_rationale": {
+          "default": "",
+          "title": "Verifier Rationale",
+          "type": "string"
+        },
+        "verifier_status": {
+          "default": "not_run",
+          "enum": [
+            "verified",
+            "not_run",
+            "unavailable"
+          ],
+          "title": "Verifier Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "issue_type",
+        "severity",
+        "explanation",
+        "component_scores",
+        "accepted",
+        "model_confidence",
+        "verifier_confidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "LegalEntity": {
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "source": {
+          "default": "heuristic",
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "label"
+      ],
+      "title": "LegalEntity",
+      "type": "object"
+    },
+    "Rewrite": {
+      "properties": {
+        "clause_id": {
+          "title": "Clause Id",
+          "type": "string"
+        },
+        "original_text": {
+          "title": "Original Text",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "rewritten_text": {
+          "title": "Rewritten Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clause_id",
+        "original_text",
+        "rewritten_text",
+        "rationale"
+      ],
+      "title": "Rewrite",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "clauses": {
+      "items": {
+        "$ref": "#/$defs/Clause"
+      },
+      "title": "Clauses",
+      "type": "array"
+    },
+    "document_id": {
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_type": {
+      "title": "Document Type",
+      "type": "string"
+    },
+    "entities": {
+      "items": {
+        "$ref": "#/$defs/LegalEntity"
+      },
+      "title": "Entities",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "file_path": {
+      "title": "File Path",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "rewrites": {
+      "items": {
+        "$ref": "#/$defs/Rewrite"
+      },
+      "title": "Rewrites",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_id",
+    "file_path",
+    "title",
+    "document_type",
+    "summary",
+    "clauses",
+    "entities",
+    "evidence",
+    "findings",
+    "rewrites"
+  ],
+  "title": "AnalysisReport",
+  "type": "object"
+}

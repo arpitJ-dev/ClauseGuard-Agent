@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
+from clauseguard.events import ProgressCallback, notify
 from clauseguard.pipeline import ClauseGuardPipeline
-from clauseguard.schemas import Clause
+from clauseguard.schemas import (
+    Clause,
+    ClauseDelta,
+    ComparisonReport,
+    ComparisonRiskSignal,
+    ComparisonSummary,
+)
 
 SAFEGUARD_TERMS = {
     "governing law": ["governed by", "construed in accordance with", "laws of", "law of"],
@@ -22,45 +30,110 @@ def compare_documents(
     modified_path: str | Path,
     *,
     output_dir: str | Path | None = None,
+    output_formats: Iterable[str] = ("json", "markdown"),
     mock_models: bool = True,
+    comparison_id: str | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     pipeline = ClauseGuardPipeline.from_env(mock_models=mock_models)
+    run_id = comparison_id or str(uuid.uuid4())
+    formats = tuple(output_formats)
+
+    notify(progress_callback, "loading", "started", 5, "Loading document versions")
     original = pipeline.loader.load(original_path)
     modified = pipeline.loader.load(modified_path)
+    notify(
+        progress_callback,
+        "loading",
+        "completed",
+        15,
+        "Document versions loaded",
+        original_file_type=original.file_type,
+        modified_file_type=modified.file_type,
+    )
+
+    notify(progress_callback, "extracting", "started", 20, "Extracting comparable clauses")
     original_type, original_clauses, _ = pipeline.preprocessor.process(
         original.model_copy(update={"text": _normalize_layout(original.text)})
     )
     modified_type, modified_clauses, _ = pipeline.preprocessor.process(
         modified.model_copy(update={"text": _normalize_layout(modified.text)})
     )
+    notify(
+        progress_callback,
+        "extracting",
+        "completed",
+        40,
+        "Comparable clauses extracted",
+        original_clause_count=len(original_clauses),
+        modified_clause_count=len(modified_clauses),
+    )
 
+    notify(progress_callback, "comparing", "started", 50, "Matching contract clauses")
     matches = _match_clauses(original_clauses, modified_clauses)
     risk_signals = _risk_signals(matches)
-    report = {
-        "original_document": str(original_path),
-        "modified_document": str(modified_path),
-        "original_type": original_type,
-        "modified_type": modified_type,
-        "original_clause_count": len(original_clauses),
-        "modified_clause_count": len(modified_clauses),
-        "summary": _summary(matches),
-        "clause_deltas": [_public_delta(delta) for delta in matches],
-        "risk_signals": risk_signals,
-        "notes": [
+    summary = _summary(matches)
+    notify(
+        progress_callback,
+        "comparing",
+        "completed",
+        80,
+        "Contract comparison completed",
+        **summary.model_dump(),
+        risk_signal_count=len(risk_signals),
+    )
+
+    report_model = ComparisonReport(
+        comparison_id=run_id,
+        original_document=str(original_path),
+        modified_document=str(modified_path),
+        original_type=original_type,
+        modified_type=modified_type,
+        original_clause_count=len(original_clauses),
+        modified_clause_count=len(modified_clauses),
+        summary=summary,
+        clause_deltas=[_public_delta(delta) for delta in matches],
+        risk_signals=risk_signals,
+        notes=[
             "Comparison mode uses both documents and is intentionally separate from standalone benchmark PRF evaluation.",
             "Signals are deterministic review hints for changed clauses, not broad legal accuracy metrics.",
         ],
-    }
+    )
+    report = report_model.model_dump(mode="json")
+
+    notify(progress_callback, "reporting", "started", 90, "Writing comparison report")
     if output_dir:
-        write_comparison_report(report, output_dir)
+        write_comparison_report(report, output_dir, formats)
+    notify(
+        progress_callback,
+        "reporting",
+        "completed",
+        98,
+        "Comparison report written",
+        output_dir=str(output_dir) if output_dir else None,
+    )
     return report
 
 
-def write_comparison_report(report: dict[str, Any], output_dir: str | Path) -> None:
+def write_comparison_report(
+    report: dict[str, Any],
+    output_dir: str | Path,
+    output_formats: Iterable[str] = ("json", "markdown"),
+) -> None:
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
-    (target / "comparison_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    (target / "comparison_report.md").write_text(comparison_to_markdown(report), encoding="utf-8")
+    formats = tuple(output_formats)
+    unknown = set(formats) - {"json", "markdown"}
+    if unknown:
+        raise ValueError(f"Unsupported comparison output format: {sorted(unknown)}")
+    if "json" in formats:
+        (target / "comparison_report.json").write_text(
+            json.dumps(report, indent=2), encoding="utf-8"
+        )
+    if "markdown" in formats:
+        (target / "comparison_report.md").write_text(
+            comparison_to_markdown(report), encoding="utf-8"
+        )
 
 
 def comparison_to_markdown(report: dict[str, Any]) -> str:
@@ -182,17 +255,17 @@ def _delta(
     }
 
 
-def _summary(matches: list[dict[str, Any]]) -> dict[str, int]:
-    return {
-        "matched": sum(1 for item in matches if item["status"] in {"changed", "unchanged"}),
-        "changed": sum(1 for item in matches if item["status"] == "changed"),
-        "added": sum(1 for item in matches if item["status"] == "added"),
-        "removed": sum(1 for item in matches if item["status"] == "removed"),
-    }
+def _summary(matches: list[dict[str, Any]]) -> ComparisonSummary:
+    return ComparisonSummary(
+        matched=sum(1 for item in matches if item["status"] in {"changed", "unchanged"}),
+        changed=sum(1 for item in matches if item["status"] == "changed"),
+        added=sum(1 for item in matches if item["status"] == "added"),
+        removed=sum(1 for item in matches if item["status"] == "removed"),
+    )
 
 
-def _risk_signals(matches: list[dict[str, Any]]) -> list[dict[str, str]]:
-    signals: list[dict[str, str]] = []
+def _risk_signals(matches: list[dict[str, Any]]) -> list[ComparisonRiskSignal]:
+    signals: list[ComparisonRiskSignal] = []
     for delta in matches:
         if delta["status"] == "unchanged":
             continue
@@ -200,19 +273,21 @@ def _risk_signals(matches: list[dict[str, Any]]) -> list[dict[str, str]]:
         modified = f"{delta.get('modified_title') or ''}\n{delta.get('_modified_text') or ''}"
         original_lower = original.lower()
         modified_lower = modified.lower()
-        clause_name = delta.get("modified_title") or delta.get("original_title") or "Document-level"
+        clause_name = str(
+            delta.get("modified_title") or delta.get("original_title") or "Document-level"
+        )
 
         added_risk_terms = sorted(
             set(delta["modified_risk_terms"]) - set(delta["original_risk_terms"])
         )
         if added_risk_terms:
             signals.append(
-                {
-                    "type": "added_risk_terms",
-                    "clause": clause_name,
-                    "detail": ", ".join(added_risk_terms),
-                    "severity": "MEDIUM",
-                }
+                ComparisonRiskSignal(
+                    type="added_risk_terms",
+                    clause=clause_name,
+                    detail=", ".join(added_risk_terms),
+                    severity="MEDIUM",
+                )
             )
 
         removed_safeguards = [
@@ -223,12 +298,12 @@ def _risk_signals(matches: list[dict[str, Any]]) -> list[dict[str, str]]:
         ]
         if removed_safeguards:
             signals.append(
-                {
-                    "type": "removed_safeguards",
-                    "clause": clause_name,
-                    "detail": ", ".join(removed_safeguards),
-                    "severity": "HIGH",
-                }
+                ComparisonRiskSignal(
+                    type="removed_safeguards",
+                    clause=clause_name,
+                    detail=", ".join(removed_safeguards),
+                    severity="HIGH",
+                )
             )
 
         if (
@@ -237,12 +312,15 @@ def _risk_signals(matches: list[dict[str, Any]]) -> list[dict[str, str]]:
             and not _has_governing_standard(modified_lower)
         ):
             signals.append(
-                {
-                    "type": "incomplete_governing_law",
-                    "clause": clause_name,
-                    "detail": "Modified text keeps dispute/forum mechanics but lacks a governing-law standard.",
-                    "severity": "HIGH",
-                }
+                ComparisonRiskSignal(
+                    type="incomplete_governing_law",
+                    clause=clause_name,
+                    detail=(
+                        "Modified text keeps dispute/forum mechanics but lacks a "
+                        "governing-law standard."
+                    ),
+                    severity="HIGH",
+                )
             )
 
     return signals[:40]
@@ -262,8 +340,10 @@ def _looks_like_governing_law(delta: dict[str, Any]) -> bool:
     return "governing law" in context
 
 
-def _public_delta(delta: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in delta.items() if not key.startswith("_")}
+def _public_delta(delta: dict[str, Any]) -> ClauseDelta:
+    return ClauseDelta.model_validate(
+        {key: value for key, value in delta.items() if not key.startswith("_")}
+    )
 
 
 def _has_dispute_text(text: str) -> bool:

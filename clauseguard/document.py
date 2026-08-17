@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import re
+import zipfile
 from pathlib import Path
 
 from clauseguard.schemas import LoadedDocument
@@ -13,11 +14,21 @@ class DocumentLoadError(RuntimeError):
 
 class DocumentLoader:
     supported_extensions = {".txt", ".docx", ".pdf"}
+    max_file_bytes = 25 * 1024 * 1024
+    max_extracted_characters = 5_000_000
+    max_docx_entries = 10_000
+    max_docx_expanded_bytes = 50 * 1024 * 1024
+    max_pdf_pages = 2_000
 
     def load(self, file_path: str | Path) -> LoadedDocument:
         path = Path(file_path)
         if not path.exists():
             raise DocumentLoadError(f"Document not found: {path}")
+        size_bytes = path.stat().st_size
+        if size_bytes > self.max_file_bytes:
+            raise DocumentLoadError(
+                f"Document '{path.name}' exceeds the {self.max_file_bytes // (1024 * 1024)} MB safety limit."
+            )
         suffix = path.suffix.lower()
         if suffix not in self.supported_extensions:
             supported = ", ".join(sorted(self.supported_extensions))
@@ -33,13 +44,17 @@ class DocumentLoader:
         text = self._normalize_text(text)
         if not text.strip():
             raise DocumentLoadError(f"No extractable text found in: {path}")
+        if len(text) > self.max_extracted_characters:
+            raise DocumentLoadError(
+                f"Document '{path.name}' exceeds the extracted-text safety limit."
+            )
 
         return LoadedDocument(
             path=str(path),
             file_type=suffix.lstrip("."),
             title=self._extract_title(text, path),
             text=text,
-            metadata={"size_bytes": path.stat().st_size},
+            metadata={"size_bytes": size_bytes},
         )
 
     def _load_docx(self, path: Path) -> str:
@@ -49,11 +64,28 @@ class DocumentLoader:
             raise DocumentLoadError("python-docx is required to read .docx files.") from exc
 
         try:
+            with zipfile.ZipFile(path) as archive:
+                entries = archive.infolist()
+                if len(entries) > self.max_docx_entries:
+                    raise DocumentLoadError(
+                        f"Could not read DOCX document '{path.name}': container exceeds the entry safety limit."
+                    )
+                expanded_bytes = sum(entry.file_size for entry in entries)
+                if expanded_bytes > self.max_docx_expanded_bytes:
+                    raise DocumentLoadError(
+                        f"Could not read DOCX document '{path.name}': expanded content exceeds the safety limit."
+                    )
+                if any(entry.flag_bits & 0x1 for entry in entries):
+                    raise DocumentLoadError(
+                        f"Could not read DOCX document '{path.name}': encrypted containers are not supported."
+                    )
             document = Document(str(path))
             paragraphs = [
                 paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()
             ]
             return "\n\n".join(paragraphs)
+        except DocumentLoadError:
+            raise
         except Exception as exc:
             raise DocumentLoadError(
                 f"Could not read DOCX document '{path.name}': invalid or corrupted file."
@@ -77,8 +109,18 @@ class DocumentLoader:
                     raise DocumentLoadError(
                         f"Could not read PDF document '{path.name}': encrypted PDFs are not supported."
                     )
+                if len(reader.pages) > self.max_pdf_pages:
+                    raise DocumentLoadError(
+                        f"Could not read PDF document '{path.name}': page count exceeds the safety limit."
+                    )
+                extracted_characters = 0
                 for page in reader.pages:
                     page_text = page.extract_text() or ""
+                    extracted_characters += len(page_text)
+                    if extracted_characters > self.max_extracted_characters:
+                        raise DocumentLoadError(
+                            f"Could not read PDF document '{path.name}': extracted text exceeds the safety limit."
+                        )
                     normalized_page = re.sub(r"\s+", " ", page_text).strip()
                     # Some generated PDFs expose the entire document as an identical
                     # hidden text layer on every page. Retain short repeated pages but

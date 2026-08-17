@@ -3,6 +3,9 @@
 This directory contains the contract sources and synthetic perturbations used by
 ClauseGuard's repository regression benchmark.
 
+The corpus is a selected subset of the CLAUSE discrepancy benchmark. Source,
+licensing, and citation details are recorded in [NOTICE.md](NOTICE.md).
+
 ## Layout
 
 - `original/` contains ten source contract exhibits.
@@ -23,6 +26,5 @@ The `contradicted_law` text in perturbation metadata is source annotation, not a
 ClauseGuard legal authority. The active retrieval corpus uses curated review
 checklists, and generated findings still require professional legal review.
 
-The MIT license covers the project source code. Contract exhibits and derived
-dataset records retain their underlying source considerations; verify applicable
-source terms before redistributing the dataset independently.
+The project license covers ClauseGuard source code only. Contract exhibits and
+derived perturbations retain upstream terms described in [NOTICE.md](NOTICE.md).

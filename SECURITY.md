@@ -35,6 +35,17 @@ separate system policy from serialized document content, and model output is
 validated before entering application state. Consumers should still review output
 for prompt injection, fabricated authority, and adversarial formatting.
 
+The browser control plane limits request size, sanitizes uploaded names, stores
+files under per-job directories, and rejects unsupported extensions. The Python
+loader separately bounds source size, DOCX expansion and entry count, PDF page
+count, and extracted text length before analysis.
+
+API responses are marked `no-store`; browser assets use a restrictive Content
+Security Policy and same-origin resource policy. The server binds to loopback by
+default. Deployments that bind to a non-loopback interface require authentication,
+TLS termination, access logging, retention controls, and an explicit network
+trust boundary in front of ClauseGuard.
+
 ## Output Integrity
 
 ClauseGuard is a review aid, not an authorization or enforcement system. Do not
@@ -47,3 +58,7 @@ when findings influence a legal workflow.
 CI installs dependencies from `pyproject.toml`, runs static analysis and tests,
 and exercises parsers with malformed inputs. Review dependency updates before
 merging, especially document parsers and network clients.
+
+CI audits Python, npm, and Go dependency graphs and runs CodeQL across Python,
+Go, and TypeScript. Dependabot monitors all four dependency ecosystems, including
+GitHub Actions.

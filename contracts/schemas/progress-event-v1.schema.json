@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "EventError": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "EventError",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "progress": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Progress",
+      "type": "integer"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sequence": {
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "queued",
+        "loading",
+        "extracting",
+        "retrieving",
+        "checking",
+        "verifying",
+        "scoring",
+        "rewriting",
+        "comparing",
+        "reporting",
+        "completed",
+        "failed"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "started",
+        "completed",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "timestamp": {
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "progress",
+        "completed",
+        "error"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "sequence",
+    "type",
+    "stage",
+    "status",
+    "progress",
+    "message"
+  ],
+  "title": "ProgressEvent",
+  "type": "object"
+}
